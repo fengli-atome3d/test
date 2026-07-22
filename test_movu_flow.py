@@ -85,11 +85,43 @@ def run_in_order():
     return f"LOAD-TEST-{SUFFIX}"
 
 
+def run_cycle_order_by_demand():
+    """
+    Uses the 'orderDemands' mechanism (stockId + quantity) instead of a
+    hardcoded handlingUnitId — confirmed to exist in swagger.json, but only
+    shown there paired with type "Out". Testing here whether it also works
+    with type "Cycle", which is what we actually need (piece-picking that
+    returns the bin to storage, per the Atome doc).
+    """
+    order_id = f"ORDER-CYCLE-DEMAND-{SUFFIX}"
+    payload = {
+        "id": order_id,
+        "type": "Cycle",
+        "due": None,
+        "priority": None,
+        "released": False,
+        "terminal": PICKING_TERMINAL,
+        "orderDemands": [
+            {
+                "id": f"DEMAND-{SUFFIX}",
+                "stockId": STOCK_ID,
+                "quantity": 1,
+            }
+        ],
+        "orderLines": [],
+    }
+    print(f"\n=== Creating Cycle order (by demand) {order_id} on {PICKING_TERMINAL} ===")
+    post_order(payload)
+    print("Waiting for it to reach Processed (presented at workstation)...")
+    wait_for_state(order_id, target_states={"Processed", "Finished"}, timeout_s=120)
+    return order_id
+
+
 def run_cycle_order(handling_unit_id: str):
     order_id = f"ORDER-CYCLE-TEST-{SUFFIX}"
     payload = {
         "id": order_id,
-        "type": "cycle",
+        "type": "Cycle",
         "due": None,
         "priority": None,
         "released": False,
@@ -103,7 +135,7 @@ def run_cycle_order(handling_unit_id: str):
             }
         ],
     }
-    print(f"\n=== Creating Cycle order {order_id} on {PICKING_TERMINAL} ===")
+    print(f"\n=== Creating Cycle order (by handlingUnitId) {order_id} on {PICKING_TERMINAL} ===")
     post_order(payload)
     print("Waiting for it to reach Processed (presented at workstation)...")
     wait_for_state(order_id, target_states={"Processed", "Finished"}, timeout_s=120)
@@ -113,5 +145,11 @@ def run_cycle_order(handling_unit_id: str):
 if __name__ == "__main__":
     print(f"Using MOVU_OPS_BASE_URL={BASE_URL} (verify_ssl={VERIFY_SSL})")
     hu_id = run_in_order()
-    run_cycle_order(hu_id)
+    print(f"\nStock seeded in handling unit: {hu_id}")
+
+    input("\nPress Enter once you've confirmed (in the Ops UI Handling Units tab) "
+          "that this handling unit shows as stored, to continue with the Cycle "
+          "order test...")
+
+    run_cycle_order_by_demand()
     print("\nDone. Check the Ops UI Orders tab for full detail.")

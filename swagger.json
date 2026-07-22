@@ -1,0 +1,4813 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "Movu ops V3",
+    "version": "3.0"
+  },
+  "paths": {
+    "/api/v3/orders/{orderId}": {
+      "get": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "GetOrder",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "Update",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders": {
+      "get": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "GetAllOrders",
+        "parameters": [
+          {
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "FromUtc",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "UntilUtc",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "QueryOrder",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/QueryOrder"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderSummary"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "Initiate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitiateOrderRequest"
+              },
+              "examples": {
+                "Create Inbound Order for Handlingunit with StorageProfile": {
+                  "summary": "Create Inbound Order for Handlingunit with StorageProfile",
+                  "description": "An inbound order is created for a Handlingunit with a single Carrier and a set StorageProfile.\r\n\r\n#### Explanined\r\nWhen an inbound order is created for a handlingunit with a single carrier, a storageprofile can be set that defines the carrier type",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":1,"open":false,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"In","due":null,"orderLines":[{"handlingUnitId":"LOAD-123-1","gate":"MPS-1.1","relayGate":null,"carrierId":null,"carriers":[],"barcodes":["BARCODE-1"],"storageProfile":{"stockId":"STOCK-123/CODE-BATCH/CODE-LOT/.../EMPTY","categories":["A"],"quality":"","quantity":null,"carrierType":"Full_ESD_Tote","dimensions":null,"bestBefore":null,"partial":false,"customProperties":null},"customProperties":null,"id":null,"slot":null}]}
+                },
+                "Create open Inbound Order": {
+                  "summary": "Create open Inbound Order",
+                  "description": "An open inbound order is created",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":1,"open":true,"barcode":null,"customProperties":null,"storageProfile":{"stockId":"STOCK-123/CODE-BATCH/CODE-LOT/.../EMPTY","categories":["B"],"quality":"","quantity":null,"carrierType":"Euro","dimensions":null,"bestBefore":null,"partial":false,"customProperties":null},"orderDemands":[],"id":null,"type":"In","due":null,"orderLines":[]}
+                },
+                "Create Inbound Order with the handlingunit on Dock": {
+                  "summary": "Create Inbound Order with the handlingunit on Dock",
+                  "description": "An inbound order is created with the OrderLine present on Port Position",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":1,"open":false,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"In","due":null,"orderLines":[{"handlingUnitId":"LOAD-123-1","gate":"MPS-1.1","relayGate":null,"carrierId":null,"carriers":[],"barcodes":["BARCODE-1","BARCODE-2"],"storageProfile":{"stockId":"STOCK-123/CODE-BATCH/CODE-LOT/.../EMPTY","categories":["A"],"quality":"","quantity":null,"carrierType":"Euro","dimensions":{"length":1200,"width":800,"height":2150,"weight":33659},"bestBefore":null,"partial":false,"customProperties":null},"customProperties":null,"id":"ORDERLINE-123-1","slot":null}]}
+                },
+                "Outbound order by StorageProfile": {
+                  "summary": "Outbound order by StorageProfile",
+                  "description": "Retrieve a handlingunit of a certain storageprofile (similar to retrieve by content of v1/2). In this case the final drop position (gete) is already known",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"Out","due":null,"orderLines":[{"handlingUnitId":null,"gate":"MPS-1.1","relayGate":null,"carrierId":null,"carriers":[],"barcodes":[],"storageProfile":{"stockId":"EMPTY","categories":[],"quality":"","quantity":null,"carrierType":"Full_ESD_Tote","dimensions":null,"bestBefore":null,"partial":false,"customProperties":null},"customProperties":null,"id":null,"slot":null}]}
+                },
+                "Inbound order of multi carrier handlingunit": {
+                  "summary": "Inbound order of multi carrier handlingunit",
+                  "description": "Inbound order for a handlingunit consisting of multiple carriers",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"In","due":null,"orderLines":[{"handlingUnitId":"LOAD-123-1","gate":"MPS-1.1","relayGate":null,"carrierId":null,"carriers":[{"id":null,"carrierTypeId":null,"stackPosition":1,"barcodes":["BARCODE-1"],"storageProfile":{"stockId":"STOCK-123/CODE-BATCH/CODE-LOT/.../EMPTY","categories":["A"],"quality":"","quantity":null,"carrierType":"Half_ESD_Tote","dimensions":null,"bestBefore":null,"partial":false,"customProperties":null}},{"id":null,"carrierTypeId":null,"stackPosition":2,"barcodes":["BARCODE-2"],"storageProfile":{"stockId":"STOCK-124/CODE-BATCH/CODE-LOT/.../EMPTY","categories":["B"],"quality":"","quantity":null,"carrierType":"Half_ESD_Tote","dimensions":null,"bestBefore":null,"partial":false,"customProperties":null}}],"barcodes":[],"storageProfile":null,"customProperties":null,"id":null,"slot":null}]}
+                },
+                "Outbound order of multi carrier handlingunit": {
+                  "summary": "Outbound order of multi carrier handlingunit",
+                  "description": "Creates outbound order for a handling unit that consists of multiple carriers. A specific carrier is requested based on storage profile. The handlingunit will be restacked if necessary",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"Out","due":"2026-07-22T13:39:19.0542936Z","orderLines":[{"handlingUnitId":null,"gate":"MPS-1.1","relayGate":null,"carrierId":null,"carriers":[],"barcodes":[],"storageProfile":{"stockId":"EMTPY","categories":[],"quality":"","quantity":null,"carrierType":"Half_ESD_Tote","dimensions":null,"bestBefore":null,"partial":false,"customProperties":null},"customProperties":null,"id":null,"slot":null}]}
+                },
+                "Outbound order for a specific carrier": {
+                  "summary": "Outbound order for a specific carrier",
+                  "description": "Create outbound order for a specific carrier. When the carrier is part of a stacked handlingunit, it will be restacked if necessary",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"Out","due":null,"orderLines":[{"handlingUnitId":null,"gate":"MPS-1.1","relayGate":null,"carrierId":"CARRIER-X","carriers":[],"barcodes":[],"storageProfile":null,"customProperties":null,"id":null,"slot":null}]}
+                },
+                "Outbound order for a specific handlingunit": {
+                  "summary": "Outbound order for a specific handlingunit",
+                  "description": "Create outbound order for a specific handlingunit. The handlingunit will be transported as is. In case of stacked carriers, no restacking operations will be triggered",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"Out","due":null,"orderLines":[{"handlingUnitId":"LOAD-123-1","gate":"MPS-1.1","relayGate":null,"carrierId":null,"carriers":[],"barcodes":[],"storageProfile":null,"customProperties":null,"id":null,"slot":null}]}
+                },
+                "Create basic Atlas inbound order": {
+                  "summary": "Create basic Atlas inbound order",
+                  "description": "An example with an almost minimal set of information\r\n\r\nDue and Terminal are not specified, since HU's are released by the conveyor, ops can only react.\r\nhandlingUnitId is an SSCC code\r\nBarcode will be the same as the handling unit id, and can be omitted.\r\nOrderId and OrderLineId could also be omitted, but can be used to reference WMS entities like SAP shipment and TransferOrder ids\r\nQuality is a customer defined string, only tracked in ops and used as a search criterium when outbounding.\r\n",
+                  "value": {"terminal":null,"relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":"SHIPMENT-4195441380001","type":"In","due":null,"orderLines":[{"handlingUnitId":"00152106876206034070","gate":null,"relayGate":null,"carrierId":null,"carriers":[],"barcodes":[],"storageProfile":{"stockId":"0018570049-24153674","categories":[],"quality":"","quantity":null,"carrierType":"EU","dimensions":{"length":null,"width":null,"height":1600,"weight":null},"bestBefore":null,"partial":false,"customProperties":null},"customProperties":null,"id":"TO-1266274","slot":null},{"handlingUnitId":"00154106876206034186","gate":null,"relayGate":null,"carrierId":null,"carriers":[],"barcodes":[],"storageProfile":{"stockId":"0018575846-24155841","categories":[],"quality":"Q","quantity":null,"carrierType":"EU","dimensions":{"length":null,"width":null,"height":1200,"weight":null},"bestBefore":null,"partial":false,"customProperties":null},"customProperties":null,"id":"TO-1266287","slot":null}]}
+                },
+                "Create basic Atlas outbound order": {
+                  "summary": "Create basic Atlas outbound order",
+                  "description": "Basic outbound order with a set due date requesting 2 handling units of a specifc stockprofile",
+                  "value": {"terminal":"OUTBOUND-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":"SHIPMENT-5195441685002","type":"Out","due":"2009-06-15T13:45:30","orderLines":[{"handlingUnitId":null,"gate":null,"relayGate":null,"carrierId":null,"carriers":[],"barcodes":[],"storageProfile":{"stockId":"0018570049-24153674","categories":[],"quality":"","quantity":null,"carrierType":null,"dimensions":null,"bestBefore":null,"partial":false,"customProperties":null},"customProperties":null,"id":"TO-1266276","slot":null},{"handlingUnitId":null,"gate":null,"relayGate":null,"carrierId":null,"carriers":[],"barcodes":[],"storageProfile":{"stockId":"018570049-24153674","categories":[],"quality":"","quantity":null,"carrierType":null,"dimensions":null,"bestBefore":null,"partial":false,"customProperties":null},"customProperties":null,"id":"TO-1266286","slot":null}]}
+                },
+                "Inbound multiple Orderline Order with Terminal/Gate": {
+                  "summary": "Inbound multiple Orderline Order with Terminal/Gate",
+                  "description": "Inbound Order with multiple OrderLines and a Terminal/Gate assigned",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"In","due":null,"orderLines":[{"handlingUnitId":"LOAD-123-1","gate":"MPS-1.1","relayGate":null,"carrierId":null,"carriers":[{"id":null,"carrierTypeId":null,"stackPosition":1,"barcodes":["BARCODE-1"],"storageProfile":null}],"barcodes":[],"storageProfile":null,"customProperties":null,"id":"IN-18676","slot":null},{"handlingUnitId":"LOAD-124-1","gate":"MPS-1.2","relayGate":null,"carrierId":null,"carriers":[{"id":null,"carrierTypeId":null,"stackPosition":1,"barcodes":["BARCODE-1"],"storageProfile":null}],"barcodes":[],"storageProfile":null,"customProperties":null,"id":"IN-29376","slot":null}]}
+                },
+                "Inbound multiple Orderline Order without Terminal/Gate": {
+                  "summary": "Inbound multiple Orderline Order without Terminal/Gate",
+                  "description": "Inbound Order with multiple OrderLines and no Terminal/Gate assigned",
+                  "value": {"terminal":null,"relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[],"id":null,"type":"In","due":null,"orderLines":[{"handlingUnitId":"LOAD-123-1","gate":null,"relayGate":null,"carrierId":null,"carriers":[{"id":null,"carrierTypeId":null,"stackPosition":1,"barcodes":["BARCODE-1"],"storageProfile":null}],"barcodes":[],"storageProfile":null,"customProperties":null,"id":"IN-18676","slot":null},{"handlingUnitId":"LOAD-124-1","gate":null,"relayGate":null,"carrierId":null,"carriers":[{"id":null,"carrierTypeId":null,"stackPosition":1,"barcodes":["BARCODE-1"],"storageProfile":null}],"barcodes":[],"storageProfile":null,"customProperties":null,"id":"IN-29376","slot":null}]}
+                },
+                "Outbound order with OrderDemands": {
+                  "summary": "Outbound order with OrderDemands",
+                  "description": "Create an outbound order using OrderDemands instead of OrderLines. \r\nOrderDemands define the stock requirements, and the system will automatically resolve these into OrderLines based on available stock.\r\n\r\nThis example shows requesting different stock items with specific quantities, and the system will find and allocate the appropriate handling units.",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[{"id":"DEMAND-001","stockId":"SKU-LAPTOP-001","quantity":50,"slot":1,"gate":"MPS-1.1"},{"id":"DEMAND-002","stockId":"SKU-MOUSE-002","quantity":100,"slot":2,"gate":"MPS-1.2"},{"id":null,"stockId":"SKU-KEYBOARD-003","quantity":25,"slot":3,"gate":null}],"id":null,"type":"Out","due":"2026-07-22T15:39:19.054598Z","orderLines":[]}
+                },
+                "Simple outbound order with single OrderDemand": {
+                  "summary": "Simple outbound order with single OrderDemand",
+                  "description": "Basic example of using a single OrderDemand for outbound fulfillment.\r\nThe system will automatically find and allocate stock matching the StockId and requested quantity.",
+                  "value": {"terminal":"MPS-1","relayTerminal":null,"typeId":"Default","released":null,"priority":null,"orderLineCount":null,"open":null,"barcode":null,"customProperties":null,"storageProfile":null,"orderDemands":[{"id":null,"stockId":"PRODUCT-ABC-123","quantity":10,"slot":null,"gate":null}],"id":null,"type":"Out","due":null,"orderLines":[]}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/orderlines": {
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "AddOrderLineToOrder",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitiateOrderLineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderLineSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/release": {
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "ReleaseOrder",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/close": {
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "CloseOrder",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/orderline/{orderLineId}": {
+      "patch": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "Update",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderLineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrderLineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderLineSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/cancel": {
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "CancelOrder",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/orderlines/{orderLineId}/cancel": {
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "CancelOrderLine",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderLineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/abort": {
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "AbortOrder",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/orderlines/{orderLineId}/abort": {
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "AbortOrderLine",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderLineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orders/{orderId}/orderlines/{orderLineId}/retry-validation": {
+      "post": {
+        "tags": [
+          "OrderFulfillment"
+        ],
+        "operationId": "RevalidateInboundValidationForOrderLine",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderLineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/relocations": {
+      "post": {
+        "tags": [
+          "Resources"
+        ],
+        "operationId": "RelocateShuttle",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShuttleRelocationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v3/categories": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "GetCategories",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/handlingunits/{handlingUnitId}": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "GetHandlingUnit",
+        "parameters": [
+          {
+            "name": "handlingUnitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandlingUnitSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "DiscardHandlingUnit",
+        "parameters": [
+          {
+            "name": "handlingUnitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "NoContent"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/handlingunits": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "GetHandlingUnits",
+        "parameters": [
+          {
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "FromUtc",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "UntilUtc",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "QueryOrder",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/QueryOrder"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HandlingUnitSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "InsertHandlingUnit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsertHandlingUnitDetails"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandlingUnitSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/handlingunits/{handlingUnitId}/location": {
+      "patch": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "MigrateHandlingUnit",
+        "parameters": [
+          {
+            "name": "handlingUnitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrateHandlingUnitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandlingUnitSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/handlingunits/{handlingUnitId}/storageprofile": {
+      "patch": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "UpdateStorageProfile",
+        "parameters": [
+          {
+            "name": "handlingUnitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStorageProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandlingUnitSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/handlingunits/{handlingUnitId}/carrier/{carrierId}/storageprofile": {
+      "patch": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "UpdateCarrierStorageProfile",
+        "parameters": [
+          {
+            "name": "handlingUnitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "carrierId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStorageProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandlingUnitSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/handlingunits/{handlingUnitId}/carriers": {
+      "patch": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "UpdateCarrierStackOrder",
+        "parameters": [
+          {
+            "name": "handlingUnitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCarrierStackOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandlingUnitSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/locations": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "GetLocations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LocationSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/locations/{id}": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "GetLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationDetailSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/locations/{id}/mode": {
+      "patch": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "ChangeMode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationMode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/locationpositions": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "GetLocationPositions",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LocationPositionSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/locationpositions/{id}": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "GetPosition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationPositionDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/locationpositions/{id}/disable": {
+      "patch": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "DisableLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/locationpositions/{id}/enable": {
+      "patch": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "EnableLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/locationpositions/{id}/category/{category}": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "AddLocationCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Storage"
+        ],
+        "operationId": "RemoveLocationCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}": {
+      "get": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "GetTerminal",
+        "parameters": [
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminalSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals": {
+      "get": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "GetTerminals",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TerminalSummary"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}/gate/{gateId}": {
+      "get": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "GetGate",
+        "parameters": [
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "gateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}/release": {
+      "post": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "AssignTerminalToOrderLine",
+        "parameters": [
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseOrderLineToGateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}/gate/{gateId}/release": {
+      "post": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "ReleaseCurrentGate",
+        "parameters": [
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "gateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}/gate/{gateId}/pause": {
+      "post": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "PauseGate",
+        "parameters": [
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "gateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}/gate/{gateId}/resume": {
+      "post": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "ResumeGate",
+        "parameters": [
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "gateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}/pause": {
+      "post": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "PauseTerminal",
+        "parameters": [
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}/resume": {
+      "post": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "ResumeTerminal",
+        "parameters": [
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/terminals/{terminalId}/gate/{gateId}/order-classes": {
+      "put": {
+        "tags": [
+          "TerminalFulfillment"
+        ],
+        "operationId": "ChangeOrderClasses",
+        "parameters": [
+          {
+            "name": "gateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "terminalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OrderClass"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}": {
+      "get": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "GetTransport",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports": {
+      "get": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "GetAllTransports",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TransportSummary"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "CreateTransport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTransportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportSummary"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}/cancel": {
+      "post": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "CancelTransport",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}/abort": {
+      "post": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "AbortTransport",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}/confirmfinalsource": {
+      "post": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "TransportConfirmFinalSource",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalSourceInformation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalSourceSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}/confirmfinaldestination": {
+      "post": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "TransportConfirmFinalDestination",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationPositionReference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalDestinationSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}/informfinaldestination": {
+      "post": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "TransportInformFinalDestination",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalDestinationInformation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalDestinationSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}/editdestination": {
+      "put": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "EditTransportDestination",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationPositionReference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}/editsource": {
+      "put": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "EditTransportSource",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditSourceInformation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/transports/{transportId}/{transportLegId}/finalize": {
+      "post": {
+        "tags": [
+          "Transportation"
+        ],
+        "operationId": "FinalizeTransportLeg",
+        "parameters": [
+          {
+            "name": "transportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "transportLegId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/webhooks/callbacks": {
+      "post": {
+        "tags": [
+          "WebhookConsumerContract"
+        ],
+        "operationId": "PostWebhookNotification",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationWrapper"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v3/webhooks/registrations": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "operationId": "AddVersionedVersionedRegistration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookRegistrationDetails"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "operationId": "GetVersionedRegistrations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookRegistrationResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookRegistrationResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookRegistrationResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/webhooks/registrations/{id}": {
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "operationId": "GetVersionedRegistration",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookRegistrationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Webhooks"
+        ],
+        "operationId": "RemoveVersionedRegistration",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "NoContent"
+          },
+          "404": {
+            "description": "NotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Webhooks"
+        ],
+        "operationId": "EditVersionedRegistration",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookRegistrationDetails"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v3/webhooks/registrations/notificationtypes": {
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "operationId": "GetWebhookNotificationTypes",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookNotificationTypes"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookNotificationTypes"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookNotificationTypes"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Accessibility": {
+        "enum": [
+          "Undefined",
+          "Front",
+          "Back",
+          "Both"
+        ],
+        "type": "string"
+      },
+      "Carrier": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrierTypeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "stackPosition": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "barcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfile"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CarrierSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "stackPosition": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "barcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfileSummary"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContextType": {
+        "enum": [
+          "Unkown",
+          "Load",
+          "Mission",
+          "Order",
+          "Zone",
+          "Health",
+          "Vehicle",
+          "Task",
+          "Transport",
+          "Relocation"
+        ],
+        "type": "string"
+      },
+      "ConveyorFaultData": {
+        "type": "object",
+        "properties": {
+          "overhangFront": {
+            "type": "boolean"
+          },
+          "overhangBack": {
+            "type": "boolean"
+          },
+          "overhangLeft": {
+            "type": "boolean"
+          },
+          "overhangRight": {
+            "type": "boolean"
+          },
+          "deflectionRunners": {
+            "type": "boolean"
+          },
+          "forkspaceObstruction": {
+            "type": "boolean"
+          },
+          "missingRunner": {
+            "type": "boolean"
+          },
+          "noBarcode": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateTransportDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "handlingUnit": {
+            "$ref": "#/components/schemas/HandlingUnitInformation"
+          },
+          "typeId": {
+            "type": "string"
+          },
+          "sourceConfirmation": {
+            "type": "boolean"
+          },
+          "destinationConfirmation": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CurrentHandlingUnitInformation": {
+        "type": "object",
+        "properties": {
+          "length": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "isLast": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DestinationRequestDto": {
+        "type": "object",
+        "properties": {
+          "actualLocation": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "barcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "carrierTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "trackingIdentifier": {
+            "$ref": "#/components/schemas/TrackingIdentifier"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "carrierLength": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "carrierWidth": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "carrierHeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "carrierWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "faultData": {
+            "$ref": "#/components/schemas/ConveyorFaultData"
+          },
+          "messageCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "slottingCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Dimensions": {
+        "type": "object",
+        "properties": {
+          "length": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "weight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditSourceInformation": {
+        "type": "object",
+        "properties": {
+          "locationPositionReference": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "handlingUnit": {
+            "$ref": "#/components/schemas/HandlingUnitInformation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalDestinationInformation": {
+        "type": "object",
+        "properties": {
+          "previousHandlingUnit": {
+            "$ref": "#/components/schemas/PreviousHandlingUnitInformation"
+          },
+          "currentHandlingUnit": {
+            "$ref": "#/components/schemas/CurrentHandlingUnitInformation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalDestinationSummary": {
+        "type": "object",
+        "properties": {
+          "locationPosition": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalSourceInformation": {
+        "type": "object",
+        "properties": {
+          "locationPositionReference": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "handlingUnit": {
+            "$ref": "#/components/schemas/HandlingUnitInformation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalSourceSummary": {
+        "type": "object",
+        "properties": {
+          "locationPosition": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GateSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "locationPositionId": {
+            "type": "string"
+          },
+          "loadId": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "HandlingUnitInformation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/Dimensions"
+          },
+          "carrierId": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrierTypeId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "HandlingUnitState": {
+        "enum": [
+          "Stored",
+          "Retrieved",
+          "Discarded",
+          "Floating"
+        ],
+        "type": "string"
+      },
+      "HandlingUnitSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/HandlingUnitState"
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationPositionSummary"
+          },
+          "vehicleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfileSummary"
+          },
+          "carriers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CarrierSummary"
+            },
+            "nullable": true
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/Dimensions"
+          }
+        },
+        "additionalProperties": false
+      },
+      "InitiateOrderDemandRequest": {
+        "required": [
+          "stockId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "stockId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "slot": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "gate": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InitiateOrderLineRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "slot": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "handlingUnitId": {
+            "type": "string",
+            "nullable": true
+          },
+          "gate": {
+            "type": "string",
+            "nullable": true
+          },
+          "relayGate": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrierId": {
+            "type": "string",
+            "nullable": true
+          },
+          "carriers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Carrier"
+            },
+            "nullable": true
+          },
+          "barcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfile"
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InitiateOrderRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "$ref": "#/components/schemas/OrderClass"
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "orderLines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitiateOrderLineRequest"
+            },
+            "nullable": true
+          },
+          "terminal": {
+            "type": "string",
+            "nullable": true
+          },
+          "relayTerminal": {
+            "type": "string",
+            "nullable": true
+          },
+          "typeId": {
+            "type": "string"
+          },
+          "released": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderLineCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "open": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfile"
+          },
+          "orderDemands": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitiateOrderDemandRequest"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InsertHandlingUnitDetails": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationPositionSummary": {
+            "$ref": "#/components/schemas/LocationPositionSummary"
+          },
+          "state": {
+            "$ref": "#/components/schemas/HandlingUnitState"
+          },
+          "vehicleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/Dimensions"
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfile"
+          },
+          "carriers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Carrier"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "JsonNode": {
+        "type": "object",
+        "properties": {
+          "options": {
+            "$ref": "#/components/schemas/JsonNodeOptions"
+          },
+          "parent": {
+            "$ref": "#/components/schemas/JsonNode"
+          },
+          "root": {
+            "$ref": "#/components/schemas/JsonNode"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JsonNodeOptions": {
+        "type": "object",
+        "properties": {
+          "propertyNameCaseInsensitive": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationDetailSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lane": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "section": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "isStorage": {
+            "type": "boolean"
+          },
+          "isPick": {
+            "type": "boolean"
+          },
+          "isCharger": {
+            "type": "boolean"
+          },
+          "externalManagement": {
+            "type": "boolean"
+          },
+          "accessibility": {
+            "$ref": "#/components/schemas/Accessibility"
+          },
+          "stowingAlignment": {
+            "$ref": "#/components/schemas/StowingAlignment"
+          },
+          "stowingStrategy": {
+            "$ref": "#/components/schemas/StowingStrategy"
+          },
+          "handoverSynchronization": {
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/LocationMode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LocationState"
+          },
+          "locationPositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocationPositionSummary"
+            },
+            "nullable": true
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocationStatusSummary"
+            },
+            "nullable": true
+          },
+          "reservations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocationReservationSummary"
+            },
+            "nullable": true
+          },
+          "storageCaterories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageCategorySummary"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationMode": {
+        "enum": [
+          "Automatic",
+          "Disabled"
+        ],
+        "type": "string"
+      },
+      "LocationPositionDetails": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "level": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "lane": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "section": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "distance": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "storageCategories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageCategorySummary"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationPositionReference": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "offset": {
+            "$ref": "#/components/schemas/Offset"
+          },
+          "warehouseSide": {
+            "$ref": "#/components/schemas/WarehouseSide"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationPositionSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "level": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "lane": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "section": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "distance": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationReservationScope": {
+        "enum": [
+          "Retrieve",
+          "Store"
+        ],
+        "type": "string"
+      },
+      "LocationReservationSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/LocationReservationScope"
+          },
+          "warehouseSide": {
+            "$ref": "#/components/schemas/WarehouseSide"
+          },
+          "locationPositionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "handlingUnitId": {
+            "type": "string"
+          },
+          "lateDecision": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationState": {
+        "enum": [
+          "Ready",
+          "NotReady"
+        ],
+        "type": "string"
+      },
+      "LocationStatusSummary": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "severity": {
+            "$ref": "#/components/schemas/StatusSeverity"
+          },
+          "details": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lane": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "section": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "isStorage": {
+            "type": "boolean"
+          },
+          "isPick": {
+            "type": "boolean"
+          },
+          "isCharger": {
+            "type": "boolean"
+          },
+          "externalManagement": {
+            "type": "boolean"
+          },
+          "accessibility": {
+            "$ref": "#/components/schemas/Accessibility"
+          },
+          "stowingAlignment": {
+            "$ref": "#/components/schemas/StowingAlignment"
+          },
+          "stowingStrategy": {
+            "$ref": "#/components/schemas/StowingStrategy"
+          },
+          "handoverSynchronization": {
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/LocationMode"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LocationState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MigrateHandlingUnitRequest": {
+        "type": "object",
+        "properties": {
+          "locationPosition": {
+            "type": "string",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "distance": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "notificationType": {
+            "type": "string",
+            "nullable": true
+          },
+          "notificationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "timeStamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contextType": {
+            "$ref": "#/components/schemas/ContextType"
+          },
+          "payload": {
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "NotificationType": {
+        "enum": [
+          "Unknown",
+          "LoadContentUpdated",
+          "LoadLocationUpdated",
+          "LoadDiscarded",
+          "LoadStored",
+          "LoadRetrieved",
+          "LoadContentUpdatedV2",
+          "LoadStoredV2",
+          "LoadRetrievedV2",
+          "CarrierContentUpdated",
+          "MissionCreated",
+          "MissionDestinationChanged",
+          "MissionDropped",
+          "MissionError",
+          "MissionPicked",
+          "MissionPriorityChanged",
+          "MissionVehicleChanged",
+          "MissionCancelled",
+          "MissionAborted",
+          "MissionAssigned",
+          "MissionAssigning",
+          "AbortMissionFailed",
+          "CancelMissionFailed",
+          "MissionRequested",
+          "MissionAwaitingSourceEntranceConfirmation",
+          "MissionAwaitingDestinationEntranceConfirmation",
+          "MissionAwaitingSourceExitConfirmation",
+          "MissionSourceChanged",
+          "MissionLoadChanged",
+          "OrderCreated",
+          "OrderStarted",
+          "OrderActivated",
+          "OrderFinished",
+          "OrderCancelled",
+          "OrderProcessed",
+          "OrderDueUpdated",
+          "OrderAborted",
+          "ZoneStateChanged",
+          "OrderLineCreated",
+          "OrderLineStaging",
+          "OrderLineStaged",
+          "OrderLineStarted",
+          "OrderLineActivated",
+          "OrderLineFinished",
+          "OrderLineCancelled",
+          "OrderLineErrored",
+          "OrderLineProcessed",
+          "OrderLinePresented",
+          "OrderLineAwaitingConfirmation",
+          "OrderLineAccepted",
+          "OrderLineRejected",
+          "OrderLineValidationFailed",
+          "OrderLineRejecting",
+          "OrderLineReleased",
+          "OrderLineAborted",
+          "OrderLineAdded",
+          "OrderDemandsClosed",
+          "OrderDemandClosed",
+          "SystemHealthChanged",
+          "VehicleBatteryLevelChanged",
+          "VehicleModeChanged",
+          "VehicleStateChanged",
+          "VehicleRemoved",
+          "TaskStateChanged",
+          "HandlingUnitDiscared",
+          "HandlingUnitLocationUpdated",
+          "HandlingUnitRetrieved",
+          "HandlingUnitStored",
+          "TransportCreated",
+          "TransportActive",
+          "TransportFinished",
+          "TransportStarted",
+          "TransportResumed",
+          "TransportBlockedByHandlingUnit",
+          "TransportAwaitingFinalDestination",
+          "TransportAwaitingFinalSource",
+          "TransportRequested",
+          "TransportStatusesUpdated",
+          "TransportLegCreated",
+          "TransportLegActive",
+          "TransportLegFinished",
+          "TransportLegStarted",
+          "TransportLegPending",
+          "TransportLegAwaitingFinalization",
+          "RelocationExecuting",
+          "RelocationFinished",
+          "RelocationMovementPending"
+        ],
+        "type": "string"
+      },
+      "NotificationWrapper": {
+        "type": "object",
+        "properties": {
+          "notifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Offset": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "distance": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderClass": {
+        "enum": [
+          "Unknown",
+          "In",
+          "Out",
+          "Cycle",
+          "Transfer"
+        ],
+        "type": "string"
+      },
+      "OrderLineState": {
+        "enum": [
+          "Unknown",
+          "Created",
+          "Staging",
+          "Staged",
+          "Started",
+          "Active",
+          "Presented",
+          "Processed",
+          "Finished",
+          "Cancelled",
+          "Aborted",
+          "Errored",
+          "AwaitingConfirmation",
+          "Accepted",
+          "Rejected",
+          "Dismissed",
+          "Rejecting",
+          "Released"
+        ],
+        "type": "string"
+      },
+      "OrderLineSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slot": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "state": {
+            "$ref": "#/components/schemas/OrderLineState"
+          },
+          "barcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "scannedBarcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "handlingUnitId": {
+            "type": "string",
+            "nullable": true
+          },
+          "gate": {
+            "type": "string",
+            "nullable": true
+          },
+          "relayGateId": {
+            "type": "string",
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfileSummary"
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          },
+          "carriers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CarrierSummary"
+            },
+            "nullable": true
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusSummary"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderQueueTrigger": {
+        "enum": [
+          "OnCreate",
+          "OnIPointNotification"
+        ],
+        "type": "string"
+      },
+      "OrderState": {
+        "enum": [
+          "Unknown",
+          "Created",
+          "Started",
+          "Active",
+          "Processed",
+          "Finished",
+          "Cancelled",
+          "Aborted"
+        ],
+        "type": "string"
+      },
+      "OrderSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/OrderClass"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OrderState"
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "orderLines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderLineSummary"
+            },
+            "nullable": true
+          },
+          "terminal": {
+            "type": "string",
+            "nullable": true
+          },
+          "relayTerminalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "typeId": {
+            "type": "string"
+          },
+          "released": {
+            "type": "boolean"
+          },
+          "orderLineCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "open": {
+            "type": "boolean"
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfileSummary"
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Outcome": {
+        "enum": [
+          "Succeeded",
+          "Aborted",
+          "Cancelled",
+          "Abandoned"
+        ],
+        "type": "string"
+      },
+      "PreviousHandlingUnitInformation": {
+        "type": "object",
+        "properties": {
+          "storageDistance": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "length": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "overhang": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": { }
+      },
+      "QueryOrder": {
+        "enum": [
+          "Descending",
+          "Ascending"
+        ],
+        "type": "string"
+      },
+      "ReleaseOrderLineToGateRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "gate": {
+            "type": "string"
+          },
+          "carriers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Carrier"
+            },
+            "nullable": true
+          },
+          "barcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfile"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReleaseOrderRequest": {
+        "type": "object",
+        "properties": {
+          "terminal": {
+            "type": "string",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "due": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "open": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShuttleRelocationRequest": {
+        "required": [
+          "destination"
+        ],
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "destination": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transporterId": {
+            "type": "string",
+            "nullable": true
+          },
+          "shuttle": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StatusSeverity": {
+        "enum": [
+          "Information",
+          "Warning",
+          "Error",
+          "Critical"
+        ],
+        "type": "string"
+      },
+      "StatusSummary": {
+        "required": [
+          "code",
+          "severity"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "severity": {
+            "type": "string",
+            "nullable": true
+          },
+          "details": {
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StorageCategorySummary": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StorageProfile": {
+        "type": "object",
+        "properties": {
+          "stockId": {
+            "type": "string",
+            "nullable": true
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "quality": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "carrierType": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/Dimensions"
+          },
+          "bestBefore": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StorageProfileSummary": {
+        "type": "object",
+        "properties": {
+          "stockId": {
+            "type": "string",
+            "nullable": true
+          },
+          "quality": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "carrierType": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/Dimensions"
+          },
+          "bestBefore": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "storageCategories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StowingAlignment": {
+        "enum": [
+          "Undefined",
+          "FrontToBack",
+          "BackToFront"
+        ],
+        "type": "string"
+      },
+      "StowingStrategy": {
+        "enum": [
+          "Undefined",
+          "External",
+          "HighThroughput",
+          "HighDensity"
+        ],
+        "type": "string"
+      },
+      "TerminalSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "terminalTypeId": {
+            "type": "string"
+          },
+          "orderQueueTrigger": {
+            "$ref": "#/components/schemas/OrderQueueTrigger"
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GateSummary"
+            },
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TrackingIdentifier": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransportLegState": {
+        "enum": [
+          "Created",
+          "Started",
+          "Active",
+          "Finished"
+        ],
+        "type": "string"
+      },
+      "TransportLegSubState": {
+        "enum": [
+          "Undefined",
+          "Initialized",
+          "Requested",
+          "Pending",
+          "AwaitingFinalSource",
+          "Started",
+          "Active",
+          "AwaitingFinalDestination",
+          "AwaitingFinalization"
+        ],
+        "type": "string"
+      },
+      "TransportLegSummary": {
+        "required": [
+          "destination",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TransportLegState"
+          },
+          "subState": {
+            "$ref": "#/components/schemas/TransportLegSubState"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransportState": {
+        "enum": [
+          "Created",
+          "Started",
+          "Active",
+          "Finished"
+        ],
+        "type": "string"
+      },
+      "TransportStatusSummary": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "severity": {
+            "$ref": "#/components/schemas/StatusSeverity"
+          },
+          "details": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransportSummary": {
+        "required": [
+          "destination",
+          "handlingUnit",
+          "source",
+          "statuses",
+          "transportLegs"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TransportState"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/LocationPositionReference"
+          },
+          "handlingUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "transportLegs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransportLegSummary"
+            },
+            "nullable": true
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransportStatusSummary"
+            },
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateCarrierStackOrderRequest": {
+        "type": "object",
+        "properties": {
+          "carrierIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateOrderLineRequest": {
+        "type": "object",
+        "properties": {
+          "barcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "slot": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          },
+          "storageProfile": {
+            "$ref": "#/components/schemas/StorageProfile"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateOrderRequest": {
+        "type": "object",
+        "properties": {
+          "due": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "open": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "orderLineCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateStorageProfileRequest": {
+        "type": "object",
+        "properties": {
+          "stockId": {
+            "type": "string",
+            "nullable": true
+          },
+          "quality": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "carrierTypeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/Dimensions"
+          },
+          "bestBefore": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "partial": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "customProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonNode"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Version": {
+        "enum": [
+          "V1",
+          "V3"
+        ],
+        "type": "string"
+      },
+      "WarehouseSide": {
+        "enum": [
+          "Undefined",
+          "Front",
+          "Back"
+        ],
+        "type": "string"
+      },
+      "WebhookNotificationTypes": {
+        "type": "object",
+        "properties": {
+          "notificationTypes": {
+            "type": "object",
+            "properties": {
+              "Unkown": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Load": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Mission": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Order": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Zone": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Health": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Vehicle": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Task": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Transport": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              },
+              "Relocation": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationType"
+                }
+              }
+            },
+            "additionalProperties": false,
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WebhookRegistrationDetails": {
+        "required": [
+          "address"
+        ],
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "format": "uri"
+          },
+          "contextTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextType"
+            },
+            "nullable": true
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "httpHeaders": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "webhookFilters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "lastSentNotificationTimestamp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "lastAttemptSuccessful": {
+            "type": "boolean",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WebhookRegistrationResponse": {
+        "required": [
+          "address"
+        ],
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "format": "uri"
+          },
+          "contextTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextType"
+            },
+            "nullable": true
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "httpHeaders": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "webhookFilters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "lastSentNotificationTimestamp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "lastAttemptSuccessful": {
+            "type": "boolean",
+            "nullable": true,
+            "readOnly": true
+          },
+          "registrationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "description": "Authorization by x-api-key inside request's header",
+        "name": "x-api-key",
+        "in": "header"
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKey": [ ]
+    }
+  ]
+}
