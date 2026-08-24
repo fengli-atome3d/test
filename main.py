@@ -40,19 +40,15 @@ async def receive_order_webhook(request: Request):
     result = build_movu_order(order)
     movu_payload = result["movu_payload"]
 
-    if result["unresolved_items"]:
+    if not movu_payload["orderDemands"]:
         logger.warning(
-            "Order %s has %d item(s) with no handlingUnitId mapping yet: %s",
-            order.id, len(result["unresolved_items"]), result["unresolved_items"],
+            "Order %s produced zero orderDemands (no items had a product_ref) — nothing to send.",
+            order.id,
         )
 
     if config.DRY_RUN:
         logger.info("[DRY_RUN] Would POST to Movu OPS: %s", movu_payload)
-        return {
-            "status": "dry_run",
-            "movu_payload": movu_payload,
-            "unresolved_items": result["unresolved_items"],
-        }
+        return {"status": "dry_run", "movu_payload": movu_payload}
 
     url = f"{config.MOVU_OPS_BASE_URL}/api/v3/orders"
     async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:

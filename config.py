@@ -12,8 +12,10 @@ SHIPPINGBO_API_USER = os.getenv("SHIPPINGBO_API_USER", "")
 SHIPPINGBO_API_VERSION = os.getenv("SHIPPINGBO_API_VERSION", "1")
 
 # --- Movu OPS (WES) settings -------------------------------------------------
-# Base URL of the Movu OPS API. Confirmed on VM100: the app runs on port 9001
-# over HTTPS with a self-signed certificate (browser shows "Not secure").
+# Base URL of the Movu OPS API.
+# TODO CONFIRM: config.py says port 9001 (tested working), but README.md
+# claimed port 5000 per appsettings.json. Verify against the real
+# appsettings.json on VM100 and delete whichever note is wrong.
 MOVU_OPS_BASE_URL = os.getenv("MOVU_OPS_BASE_URL", "https://192.168.1.18:9001")
 
 # The Movu OPS test tool uses a self-signed cert (same reason its own
@@ -39,3 +41,14 @@ TRIGGER_STATES = set(
 # *would* send instead of actually POSTing it. Flip to false once the Movu
 # OPS endpoint and the handling-unit lookup are both ready.
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("1", "true", "yes")
+
+# --- Middleware's own database (dedicated schema inside Movu's Postgres) -----
+# Points at the `middleware` schema inside the `movu_ops` database on VM100.
+# The middleware_app role has USAGE/CREATE on that schema only — no access to
+# Movu's own tables. search_path is set at the role level (see DB setup docs),
+# so queries don't need to prefix "middleware." explicitly, but the schema is
+# still set explicitly below for clarity/safety.
+MIDDLEWARE_DB_URL = os.getenv(
+    "MIDDLEWARE_DB_URL",
+    "postgresql+psycopg2://middleware_app:CHANGE_ME@192.168.1.18:5432/movu_ops",
+)

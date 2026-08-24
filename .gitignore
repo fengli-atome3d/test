@@ -1,1 +1,3 @@
 .env
+movu_ops_schema.sql
+swagger.json

@@ -4,3 +4,5 @@ __pycache__/
 .env
 server.log
 .git/
+movu_ops_schema.sql
+swagger.json
