@@ -1,41 +1,72 @@
-"""
-This is a TEMPLATE for migrations/env.py — Alembic's own `alembic init`
-command generates that file, and you edit it to point at our models. Rather
-than hand-editing the auto-generated file blind, copy the relevant pieces
-below into the real migrations/env.py after running `alembic init migrations`
-(see the setup steps).
-"""
-
-# --- Add near the top, alongside the other imports Alembic already put there:
 import sys
 import os
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config
+from sqlalchemy import pool
+
+from alembic import context
+
+# Make the repo root importable (this file lives in migrations/, one level down).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import Base
 import db_models  # noqa: F401 — import so models register on Base.metadata
-import config
+import config as app_config  # aliased — "config" below is Alembic's own object
 
-# --- Replace the line `target_metadata = None` with:
+# This is the Alembic Config object, which provides access to the values
+# within the .ini file in use.
+config = context.config
+
+# Interpret the config file for Python logging (loggers/formatters/handlers).
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Point Alembic at our SQLAlchemy models for autogenerate support.
 target_metadata = Base.metadata
 
-# --- In both run_migrations_offline() and run_migrations_online(), find the
-# context.configure(...) call and add version_table_schema and the schema
-# include filter, e.g.:
-#
-#   context.configure(
-#       url=url,
-#       target_metadata=target_metadata,
-#       version_table_schema="middleware",   # <- add this line
-#       include_schemas=True,                # <- add this line
-#       ...
-#   )
+# Use MIDDLEWARE_DB_URL from our own config.py / .env instead of whatever
+# static value alembic.ini has — keeps one source of truth for the DB URL.
+config.set_main_option("sqlalchemy.url", app_config.MIDDLEWARE_DB_URL)
 
-# --- Also override the sqlalchemy.url that alembic.ini would otherwise use,
-# so it reads from the same config.py / .env as the app instead of a
-# hardcoded value sitting in alembic.ini:
-config_ini = None  # placeholder, real file has `config = context.config` already
-# find that line in the generated file, then right after it add:
-#   config.set_main_option("sqlalchemy.url", config.MIDDLEWARE_DB_URL)
-# (note: this uses our config.py's MIDDLEWARE_DB_URL — careful not to
-# confuse Alembic's `config` object with our own config module; rename
-# one of the imports if needed to avoid shadowing)
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode — generates SQL without a live DB connection."""
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        version_table_schema="middleware",
+        include_schemas=True,
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode — connects to the DB and applies changes directly."""
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table_schema="middleware",
+            include_schemas=True,
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
