@@ -4,12 +4,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- ShippingBo settings ------------------------------------------------------
-# Used if/when the middleware needs to call ShippingBo directly (e.g. to look
-# up product/stock details, or to mark an order as shipped/updated after
-# Movu OPS finishes a pick) rather than only receiving its webhook.
+# Used when the middleware needs to call ShippingBo directly (currently: to
+# sync inbound stock into the aggregate "MOVU" emplacement — see
+# shippingbo_client.py, not yet implemented pending ShippingBo API details).
 SHIPPINGBO_API_TOKEN = os.getenv("SHIPPINGBO_API_TOKEN", "")
 SHIPPINGBO_API_USER = os.getenv("SHIPPINGBO_API_USER", "")
 SHIPPINGBO_API_VERSION = os.getenv("SHIPPINGBO_API_VERSION", "1")
+
+# The single aggregate emplacement in ShippingBo representing "everything
+# currently stored in Movu" — chosen over per-bin emplacements since Movu's
+# internal bin positions shift constantly and aren't meaningful to
+# ShippingBo. May need to be created manually in ShippingBo's UI first,
+# depending on whether their API can create emplacements on the fly
+# (unconfirmed).
+MOVU_STOCK_EMPLACEMENT_NAME = os.getenv("MOVU_STOCK_EMPLACEMENT_NAME", "MOVU")
 
 # --- Movu OPS (WES) settings -------------------------------------------------
 # Base URL of the Movu OPS API.
@@ -27,19 +35,39 @@ MOVU_OPS_VERIFY_SSL = os.getenv("MOVU_OPS_VERIFY_SSL", "false").lower() in ("1",
 MOVU_TERMINAL_ID = os.getenv("MOVU_TERMINAL_ID", "MPS1")
 
 # --- Trigger logic ------------------------------------------------------------
-# Order "state" values (from Xano/ShippingBo) that mean "this order is ready
-# to be picked / sent to the warehouse". Comma-separated if there are several.
+# Order "state" values (from ShippingBo directly — no longer via Xano) that
+# mean "this order is ready to be picked / sent to the warehouse".
 #
-# Confirmed from real Xano data: "to_be_prepared" is the state to act on.
-# ("waiting_for_payment" is an earlier state and should NOT trigger a Movu order.)
+# OPEN QUESTION, NOT YET CONFIRMED: "to_be_prepared" was confirmed against
+# Xano's re-labeled state names, NOT ShippingBo's native ones. A real
+# ShippingBo webhook sample (order/status topic, hook_id 103557) showed a
+# transition from "waiting_for_payment" to "waiting_for_stock" — neither of
+# which is "to_be_prepared". We do NOT yet know ShippingBo's actual state
+# name for "ready to send to warehouse". Confirm this (ShippingBo docs, or
+# capturing a real webhook at the right transition) before relying on this
+# default in anything beyond DRY_RUN testing.
 TRIGGER_STATES = set(
     s.strip() for s in os.getenv("TRIGGER_STATES", "to_be_prepared").split(",") if s.strip()
 )
 
+# --- Movu stock scope ----------------------------------------------------------
+# Which product_ref values are actually stored in the Escala shuttle
+# warehouse (small items: filaments, resins) vs fulfilled separately
+# (large items: 3D printers). Not yet defined in ShippingBo itself — see
+# mapping.py. Empty by default on purpose: this is currently FAIL-OPEN
+# (everything gets forwarded to Movu when the list is empty) — safe today
+# only because DRY_RUN is also true. MUST be populated (or replaced with a
+# real ShippingBo-side field) before DRY_RUN is ever turned off.
+MOVU_STOCKED_PRODUCT_REFS = set(
+    s.strip() for s in os.getenv("MOVU_STOCKED_PRODUCT_REFS", "").split(",") if s.strip()
+)
+
 # --- Safety switch ------------------------------------------------------------
 # While DRY_RUN is true, the middleware logs/returns the Movu payload it
-# *would* send instead of actually POSTing it. Flip to false once the Movu
-# OPS endpoint and the handling-unit lookup are both ready.
+# *would* send instead of actually POSTing it. Flip to false only once:
+#   1. MOVU_STOCKED_PRODUCT_REFS is populated (or replaced by a real check)
+#   2. TRIGGER_STATES reflects ShippingBo's real state name, not the Xano one
+#   3. shippingbo_client.update_movu_stock() is actually implemented
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("1", "true", "yes")
 
 # --- Middleware's own database (dedicated schema inside Movu's Postgres) -----
