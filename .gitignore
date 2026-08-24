@@ -1,3 +1,4 @@
 .env
 movu_ops_schema.sql
-swagger.json
+swagger.json__pycache__/
+*.pyc
