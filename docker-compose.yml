@@ -1,8 +1,74 @@
 services:
   atome-middleware:
     build: .
+    container_name: atome-middleware
     ports:
       - "127.0.0.1:8000:8000"
     env_file:
       - .env
     restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - loki-data:/loki
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    # Bound to localhost only — never exposed publicly, matches the
+    # security requirement that /metrics stays internal-only.
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Security requirement: no admin/admin. Real password set via .env
+      # (GRAFANA_ADMIN_PASSWORD), never committed, never left as default.
+      # Kept as a fallback login alongside Google OAuth below.
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      # Google OAuth — satisfies the MFA/strong-auth requirement via
+      # Google's own 2FA, rather than building MFA into Grafana itself.
+      - GF_AUTH_GOOGLE_ENABLED=true
+      - GF_AUTH_GOOGLE_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - GF_AUTH_GOOGLE_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - GF_AUTH_GOOGLE_SCOPES=https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email
+      - GF_AUTH_GOOGLE_AUTH_URL=https://accounts.google.com/o/oauth2/auth
+      - GF_AUTH_GOOGLE_TOKEN_URL=https://accounts.google.com/o/oauth2/token
+      - GF_AUTH_GOOGLE_ALLOWED_DOMAINS=${GRAFANA_ALLOWED_DOMAIN}
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  loki-data:
+  prometheus-data:
+  grafana-data:

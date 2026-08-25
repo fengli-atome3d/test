@@ -1,0 +1,35 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+    pipeline_stages:
+      # --- Security requirement: scrub secrets before they ever reach
+      # Loki's storage. Matches tokens/keys/passwords appearing anywhere
+      # in a log line, replaces the value with ***REDACTED***.
+      - replace:
+          expression: '(?i)(authorization["\s:=]+)([^\s",}]+)'
+          replace: '${1}***REDACTED***'
+      - replace:
+          expression: '(?i)(api[_-]?key["\s:=]+)([^\s",}]+)'
+          replace: '${1}***REDACTED***'
+      - replace:
+          expression: '(?i)(password["\s:=]+)([^\s",}]+)'
+          replace: '${1}***REDACTED***'
+      - replace:
+          expression: '(?i)(x-webhook-secret["\s:=]+)([^\s",}]+)'
+          replace: '${1}***REDACTED***'

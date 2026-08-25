@@ -18,6 +18,14 @@ logger = logging.getLogger("atome_middleware")
 
 app = FastAPI(title="Atome3D Order Middleware")
 
+# Prometheus metrics at /metrics — request counts, latencies, etc, auto
+# instrumented. IMPORTANT: this endpoint must NEVER be exposed publicly on
+# movu.izylog.com (security requirement) — blocked at the Caddy level, see
+# Caddyfile. Only reachable internally (VM101 localhost / docker network),
+# which is where Prometheus itself scrapes it from.
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
 # Movu notification types that mean "an inbound handling unit finished
 # being stored" — this is when stock needs syncing to ShippingBo's
 # aggregate MOVU emplacement. Confirmed from the functional design doc's
@@ -114,9 +122,10 @@ async def receive_order_webhook(request: Request, db: Session = Depends(get_db))
         }
 
     url = f"{config.MOVU_OPS_BASE_URL}/api/v3/orders"
+    headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
     async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
         try:
-            resp = await client.post(url, json=movu_payload)
+            resp = await client.post(url, json=movu_payload, headers=headers)
             resp.raise_for_status()
         except httpx.HTTPError as e:
             logger.error("Failed to forward order to Movu OPS: %s", e)

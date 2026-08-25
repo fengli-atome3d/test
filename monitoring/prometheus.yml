@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'atome-middleware'
+    static_configs:
+      # Internal docker network address — this is NOT the public Caddy
+      # domain, and this endpoint is separately blocked at the Caddy
+      # level too (see Caddyfile). Prometheus reaches the app container
+      # directly over the docker-compose network, never via the internet.
+      - targets: ['atome-middleware:8000']
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
