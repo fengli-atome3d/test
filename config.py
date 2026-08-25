@@ -11,6 +11,17 @@ SHIPPINGBO_API_TOKEN = os.getenv("SHIPPINGBO_API_TOKEN", "")
 SHIPPINGBO_API_USER = os.getenv("SHIPPINGBO_API_USER", "")
 SHIPPINGBO_API_VERSION = os.getenv("SHIPPINGBO_API_VERSION", "1")
 
+# --- ShippingBo webhook authentication -----------------------------------------
+# ShippingBo's "Header libre" auth scheme: a shared-secret value sent as a
+# custom header on every webhook call. Satisfies the boss's security
+# requirement #1 (webhook authentication) — configured on ShippingBo's side
+# as a JSON body like {"X-Webhook-Secret": "..."} on the webhook itself.
+# Empty by default is intentionally FAIL-CLOSED: if this isn't set, every
+# incoming webhook gets rejected (see main.py), rather than silently
+# accepting unauthenticated requests.
+SHIPPINGBO_WEBHOOK_HEADER_NAME = os.getenv("SHIPPINGBO_WEBHOOK_HEADER_NAME", "X-Webhook-Secret")
+SHIPPINGBO_WEBHOOK_HEADER_VALUE = os.getenv("SHIPPINGBO_WEBHOOK_HEADER_VALUE", "")
+
 # The single aggregate emplacement in ShippingBo representing "everything
 # currently stored in Movu" — chosen over per-bin emplacements since Movu's
 # internal bin positions shift constantly and aren't meaningful to

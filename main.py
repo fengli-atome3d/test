@@ -38,6 +38,19 @@ async def receive_order_webhook(request: Request, db: Session = Depends(get_db))
     config.py). Records an order_mapping row so /webhook/movu can later
     match Movu's notifications back to this ShippingBo order.
     """
+    # --- Security requirement #1: authenticate the webhook first, before
+    # touching the body at all. ShippingBo's "Header libre" scheme sends a
+    # shared-secret value as a custom header on every call. Fail-closed:
+    # if SHIPPINGBO_WEBHOOK_HEADER_VALUE isn't configured, every request
+    # gets rejected rather than silently accepted.
+    incoming_secret = request.headers.get(config.SHIPPINGBO_WEBHOOK_HEADER_NAME)
+    if not config.SHIPPINGBO_WEBHOOK_HEADER_VALUE or incoming_secret != config.SHIPPINGBO_WEBHOOK_HEADER_VALUE:
+        logger.warning(
+            "Rejected /webhook/order call: missing or invalid '%s' header",
+            config.SHIPPINGBO_WEBHOOK_HEADER_NAME,
+        )
+        raise HTTPException(status_code=401, detail="Invalid or missing authentication header")
+
     raw_body = await request.json()
     logger.info(
         "Received order webhook: hook_id=%s order_id=%s state=%s (from=%s)",
