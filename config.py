@@ -22,6 +22,14 @@ SHIPPINGBO_API_VERSION = os.getenv("SHIPPINGBO_API_VERSION", "1")
 SHIPPINGBO_WEBHOOK_HEADER_NAME = os.getenv("SHIPPINGBO_WEBHOOK_HEADER_NAME", "X-Webhook-Secret")
 SHIPPINGBO_WEBHOOK_HEADER_VALUE = os.getenv("SHIPPINGBO_WEBHOOK_HEADER_VALUE", "")
 
+# --- Movu webhook authentication -----------------------------------------------
+# Same shared-secret-header pattern, mirrored for the Movu -> middleware
+# direction. Registered with Movu via register_movu_webhook.py, using the
+# httpHeaders field on POST /api/v3/webhooks/registrations. Fail-closed,
+# same reasoning as the ShippingBo one above.
+MOVU_WEBHOOK_HEADER_NAME = os.getenv("MOVU_WEBHOOK_HEADER_NAME", "X-Movu-Webhook-Secret")
+MOVU_WEBHOOK_HEADER_VALUE = os.getenv("MOVU_WEBHOOK_HEADER_VALUE", "")
+
 # The single aggregate emplacement in ShippingBo representing "everything
 # currently stored in Movu" — chosen over per-bin emplacements since Movu's
 # internal bin positions shift constantly and aren't meaningful to

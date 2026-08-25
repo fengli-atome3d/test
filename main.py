@@ -151,6 +151,18 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
     knowledge (e.g. manual entry via the Movu Ops UI) — we do NOT guess
     the SKU/quantity in that case, we skip and log it.
     """
+    # --- Security requirement: authenticate Movu's own webhook calls too,
+    # same shared-secret-header pattern as ShippingBo. Registered with Movu
+    # via register_movu_webhook.py (sets this header in Movu's own
+    # WebhookRegistrationDetails.httpHeaders). Fail-closed, same as above.
+    incoming_secret = request.headers.get(config.MOVU_WEBHOOK_HEADER_NAME)
+    if not config.MOVU_WEBHOOK_HEADER_VALUE or incoming_secret != config.MOVU_WEBHOOK_HEADER_VALUE:
+        logger.warning(
+            "Rejected /webhook/movu call: missing or invalid '%s' header",
+            config.MOVU_WEBHOOK_HEADER_NAME,
+        )
+        raise HTTPException(status_code=401, detail="Invalid or missing authentication header")
+
     raw_body = await request.json()
     notifications = raw_body.get("notifications", [])
     results = []
