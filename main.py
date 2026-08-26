@@ -12,7 +12,7 @@ import shippingbo_client
 from models import ShippingBoOrderWebhook
 from mapping import build_movu_order
 from database import get_db
-from db_models import OrderMapping, WebhookLog, User
+from db_models import OrderMapping, WebhookLog, User, PreparationRun
 from auth import hash_password, verify_password, create_session_token, get_current_user, SESSION_COOKIE_NAME
 
 from fastapi.templating import Jinja2Templates
@@ -83,13 +83,12 @@ def logout():
 
 
 @app.get("/internal")
-def internal_home(request: Request, current_user: User = Depends(get_current_user)):
-    """
-    Placeholder landing page for the logistics interface — confirms login
-    works end to end. The real preparation-run list page replaces this.
-    """
+def internal_home(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    runs = db.query(PreparationRun).order_by(PreparationRun.created_at.desc()).all()
     return templates.TemplateResponse(
-        request=request, name="internal_placeholder.html", context={"user_email": current_user.email}
+        request=request,
+        name="internal_runs_list.html",
+        context={"user_email": current_user.email, "runs": runs},
     )
 
 
@@ -231,6 +230,25 @@ async def receive_preparation_webhook(request: Request, db: Session = Depends(ge
         payload=raw_body,
         processed=False,
     ))
+
+    # Upsert into preparation_run so the interface list reflects it.
+    # Only meaningful once real (non-empty) payloads start arriving —
+    # {}-body validation pings from ShippingBo are logged above but
+    # correctly skipped here (no "object" key to extract from).
+    obj = raw_body.get("object")
+    if obj and obj.get("id"):
+        run_id = str(obj["id"])
+        existing_run = db.query(PreparationRun).filter_by(id=run_id).first()
+        if existing_run:
+            existing_run.state = obj.get("state", existing_run.state)
+            existing_run.package_count = obj.get("preparation_packages_count", existing_run.package_count)
+        else:
+            db.add(PreparationRun(
+                id=run_id,
+                state=obj.get("state", "unknown"),
+                package_count=obj.get("preparation_packages_count"),
+            ))
+
     db.commit()
 
     return {"status": "logged_stub"}

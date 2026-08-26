@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Atome3D Logistique — Preparation Runs</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; margin: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        h1 { font-size: 1.25rem; margin: 0; color: #18181b; }
+        .user-info { font-size: 0.85rem; color: #71717a; }
+        .user-info a { color: #71717a; margin-left: 0.75rem; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px;
+                overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        th { text-align: left; padding: 0.75rem 1rem; background: #fafafa; font-size: 0.8rem;
+             color: #52525b; border-bottom: 1px solid #e4e4e7; text-transform: uppercase; letter-spacing: 0.02em; }
+        td { padding: 0.75rem 1rem; border-bottom: 1px solid #f4f4f5; font-size: 0.9rem; color: #27272a; }
+        tr:last-child td { border-bottom: none; }
+        .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem;
+                  font-weight: 500; }
+        .badge-pending { background: #fef3c7; color: #92400e; }
+        .badge-uploaded { background: #d1fae5; color: #065f46; }
+        .empty { padding: 3rem; text-align: center; color: #a1a1aa; }
+        .action-link { color: #18181b; font-size: 0.85rem; text-decoration: none; font-weight: 500; }
+        .action-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Preparation Runs</h1>
+        <div class="user-info">
+            {{ user_email }}
+            <a href="/logout">Déconnexion</a>
+        </div>
+    </header>
+
+    {% if runs %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID (ShippingBo)</th>
+                <th>État</th>
+                <th>Colis</th>
+                <th>PDF</th>
+                <th>Créé le</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr>
+                <td>{{ run.id }}</td>
+                <td>{{ run.state }}</td>
+                <td>{{ run.package_count if run.package_count is not none else '—' }}</td>
+                <td>
+                    {% if run.pdf_uploaded %}
+                    <span class="badge badge-uploaded">Uploadé</span>
+                    {% else %}
+                    <span class="badge badge-pending">En attente</span>
+                    {% endif %}
+                </td>
+                <td>{{ run.created_at.strftime('%d/%m/%Y %H:%M') if run.created_at else '—' }}</td>
+                <td>
+                    {% if not run.pdf_uploaded %}
+                    <a class="action-link" href="/internal/runs/{{ run.id }}/upload">Upload PDF</a>
+                    {% else %}
+                    <a class="action-link" href="/internal/runs/{{ run.id }}">Voir détail</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucun preparation run pour l'instant.</div>
+    {% endif %}
+</body>
+</html>
