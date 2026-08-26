@@ -46,7 +46,7 @@ def health():
 
 @app.get("/login")
 def login_form(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request=request, name="login.html", context={"error": None})
 
 
 @app.post("/login")
@@ -56,7 +56,7 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
     if not user or not user.is_active or not verify_password(password, user.password_hash):
         logger.warning("Failed login attempt for email=%s", email)
         return templates.TemplateResponse(
-            "login.html", {"request": request, "error": "Invalid email or password."}, status_code=401
+            request=request, name="login.html", context={"error": "Invalid email or password."}, status_code=401
         )
 
     user.last_login_at = datetime.now(timezone.utc)
@@ -89,7 +89,7 @@ def internal_home(request: Request, current_user: User = Depends(get_current_use
     works end to end. The real preparation-run list page replaces this.
     """
     return templates.TemplateResponse(
-        "internal_placeholder.html", {"request": request, "user_email": current_user.email}
+        request=request, name="internal_placeholder.html", context={"user_email": current_user.email}
     )
 
 
