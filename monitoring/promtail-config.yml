@@ -18,6 +18,17 @@ scrape_configs:
         regex: '/(.*)'
         target_label: 'container'
     pipeline_stages:
+      # Extract the log level (INFO/WARNING/ERROR/etc) as a proper Loki
+      # label, not just text buried in the message. Both our own app
+      # logger ("WARNING:atome_middleware:...") and uvicorn's own access
+      # logs ("INFO:     172.18.0.1:...") start with LEVELNAME: , so one
+      # regex covers both. This enables filtering/coloring by level in
+      # Grafana instead of text-searching for "ERROR" every time.
+      - regex:
+          expression: '^(?P<level>[A-Z]+):'
+      - labels:
+          level:
+
       # --- Security requirement: scrub secrets before they ever reach
       # Loki's storage. Matches tokens/keys/passwords appearing anywhere
       # in a log line, replaces the value with ***REDACTED***.
