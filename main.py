@@ -148,6 +148,39 @@ async def receive_order_webhook(request: Request, db: Session = Depends(get_db))
     }
 
 
+@app.post("/webhook/preparation")
+async def receive_preparation_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    STUB — receives ShippingBo's PreparationRun webhook. Real payload shape
+    is not yet known (new topic, no sample captured). For now: authenticate,
+    log the raw body to webhook_log so we can inspect it once real traffic
+    arrives, and return 200. No processing logic yet — that comes once we
+    see a real payload and can build a proper model, mirroring how
+    ShippingBoOrderWebhook was built from a real sample.
+    """
+    incoming_secret = request.headers.get(config.SHIPPINGBO_WEBHOOK_HEADER_NAME)
+    if not config.SHIPPINGBO_WEBHOOK_HEADER_VALUE or incoming_secret != config.SHIPPINGBO_WEBHOOK_HEADER_VALUE:
+        logger.warning(
+            "Rejected /webhook/preparation call: missing or invalid '%s' header",
+            config.SHIPPINGBO_WEBHOOK_HEADER_NAME,
+        )
+        raise HTTPException(status_code=401, detail="Invalid or missing authentication header")
+
+    raw_body = await request.json()
+    logger.info("Received PreparationRun webhook (raw, shape not yet known): %s", raw_body)
+
+    db.add(WebhookLog(
+        notification_id=str(uuid.uuid4()),
+        source="shippingbo_preparation",
+        notification_type="preparation_run",
+        payload=raw_body,
+        processed=False,
+    ))
+    db.commit()
+
+    return {"status": "logged_stub"}
+
+
 @app.post("/webhook/movu")
 async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
     """
