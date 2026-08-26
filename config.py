@@ -45,6 +45,12 @@ MOVU_STOCK_EMPLACEMENT_NAME = os.getenv("MOVU_STOCK_EMPLACEMENT_NAME", "MOVU")
 # appsettings.json on VM100 and delete whichever note is wrong.
 MOVU_OPS_BASE_URL = os.getenv("MOVU_OPS_BASE_URL", "https://192.168.1.18:9001")
 
+# Confirmed from swagger.json's securitySchemes: static token sent as an
+# "x-api-key" header on every call. Empty by default — no key issued by
+# Movu yet, even though this dev instance hasn't been enforcing it so far
+# (every call worked without one). Add it once Sam provides an actual key.
+MOVU_OPS_API_KEY = os.getenv("MOVU_OPS_API_KEY", "")
+
 # The Movu OPS test tool uses a self-signed cert (same reason its own
 # WebhooksOptions.IgnoreSslErrors is set to true in appsettings.json).
 # Keep this false until/unless VM100 gets a trusted certificate.
@@ -54,17 +60,13 @@ MOVU_OPS_VERIFY_SSL = os.getenv("MOVU_OPS_VERIFY_SSL", "false").lower() in ("1",
 MOVU_TERMINAL_ID = os.getenv("MOVU_TERMINAL_ID", "MPS1")
 
 # --- Trigger logic ------------------------------------------------------------
-# Order "state" values (from ShippingBo directly — no longer via Xano) that
-# mean "this order is ready to be picked / sent to the warehouse".
+# Order "state" values (from ShippingBo directly) that mean "this order is
+# ready to be picked / sent to the warehouse".
 #
-# OPEN QUESTION, NOT YET CONFIRMED: "to_be_prepared" was confirmed against
-# Xano's re-labeled state names, NOT ShippingBo's native ones. A real
-# ShippingBo webhook sample (order/status topic, hook_id 103557) showed a
-# transition from "waiting_for_payment" to "waiting_for_stock" — neither of
-# which is "to_be_prepared". We do NOT yet know ShippingBo's actual state
-# name for "ready to send to warehouse". Confirm this (ShippingBo docs, or
-# capturing a real webhook at the right transition) before relying on this
-# default in anything beyond DRY_RUN testing.
+# CONFIRMED from live production traffic (Aug 25, order 169530348): a real,
+# non-duplicate transition waiting_for_stock -> to_be_prepared correctly
+# matched and built a valid Movu Cycle order. "to_be_prepared" is the real
+# ShippingBo state name, not just an assumption carried over from Xano.
 TRIGGER_STATES = set(
     s.strip() for s in os.getenv("TRIGGER_STATES", "to_be_prepared").split(",") if s.strip()
 )
@@ -89,13 +91,17 @@ MOVU_STOCKED_PRODUCT_REFS = set(
 #   3. shippingbo_client.update_movu_stock() is actually implemented
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("1", "true", "yes")
 
-# --- Middleware's own database (dedicated schema inside Movu's Postgres) -----
-# Points at the `middleware` schema inside the `movu_ops` database on VM100.
-# The middleware_app role has USAGE/CREATE on that schema only — no access to
-# Movu's own tables. search_path is set at the role level (see DB setup docs),
-# so queries don't need to prefix "middleware." explicitly, but the schema is
-# still set explicitly below for clarity/safety.
+# --- Middleware's own database (dedicated Postgres container on VM101) -----
+# As of Aug 26: fully dedicated Postgres container (docker-compose
+# "postgres" service), NOT shared with Movu's instance anymore. Resolves
+# the risk flagged after Sam's email — no coupling to Movu's DB lifecycle.
 MIDDLEWARE_DB_URL = os.getenv(
     "MIDDLEWARE_DB_URL",
-    "postgresql+psycopg2://middleware_app:CHANGE_ME@192.168.1.18:5432/movu_ops",
+    "postgresql+psycopg2://middleware_app:CHANGE_ME@postgres:5432/middleware",
 )
+
+# --- Internal logistics interface auth ------------------------------------
+# Signs session cookies for the internal picking interface. No signup
+# flow exists anywhere — accounts only created via create_user.py on
+# VM101. Generate with `openssl rand -base64 32`.
+SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "")

@@ -7,3 +7,7 @@ sqlalchemy
 psycopg2-binary
 alembic
 prometheus-fastapi-instrumentator
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+jinja2

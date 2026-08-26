@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Atome3D Logistique — Connexion</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f4f4f5; display: flex;
+               align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+                width: 320px; }
+        h1 { font-size: 1.25rem; margin: 0 0 1.5rem 0; color: #18181b; }
+        label { display: block; font-size: 0.85rem; color: #52525b; margin-bottom: 0.25rem; }
+        input { width: 100%; padding: 0.6rem; margin-bottom: 1rem; border: 1px solid #d4d4d8;
+                border-radius: 6px; box-sizing: border-box; font-size: 0.95rem; }
+        button { width: 100%; padding: 0.65rem; background: #18181b; color: white; border: none;
+                 border-radius: 6px; font-size: 0.95rem; cursor: pointer; }
+        button:hover { background: #27272a; }
+        .error { background: #fef2f2; color: #b91c1c; padding: 0.6rem; border-radius: 6px;
+                  font-size: 0.85rem; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Atome3D — Interface logistique</h1>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/login">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required autofocus>
+            <label for="password">Mot de passe</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">Se connecter</button>
+        </form>
+    </div>
+</body>
+</html>

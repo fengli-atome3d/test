@@ -155,3 +155,25 @@ class PreparationRunPack(Base):
     delivered_at = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class User(Base):
+    """
+    Internal-only accounts for the logistics interface. NO self-service
+    signup exists anywhere in this codebase, intentionally — accounts are
+    only ever created by running create_user.py directly on VM101. This
+    matches the requirement: internal tool, no one outside the team can
+    ever create their own login.
+    """
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String, nullable=False, unique=True, index=True)
+    password_hash = Column(String, nullable=False)
+
+    # Lets an account be disabled without deleting it (keeps history/audit
+    # trail intact if someone leaves the team).
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_login_at = Column(DateTime(timezone=True), nullable=True)

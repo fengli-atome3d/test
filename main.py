@@ -1,8 +1,9 @@
 import logging
 import uuid
+from datetime import datetime, timezone
 
 import httpx
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends, Form
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -11,12 +12,17 @@ import shippingbo_client
 from models import ShippingBoOrderWebhook
 from mapping import build_movu_order
 from database import get_db
-from db_models import OrderMapping, WebhookLog
+from db_models import OrderMapping, WebhookLog, User
+from auth import hash_password, verify_password, create_session_token, get_current_user, SESSION_COOKIE_NAME
+
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import RedirectResponse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("atome_middleware")
 
 app = FastAPI(title="Atome3D Order Middleware")
+templates = Jinja2Templates(directory="templates")
 
 # Prometheus metrics at /metrics — request counts, latencies, etc, auto
 # instrumented. IMPORTANT: this endpoint must NEVER be exposed publicly on
@@ -36,6 +42,55 @@ INBOUND_COMPLETE_NOTIFICATION_TYPES = {"HandlingUnitStored", "OrderLineProcessed
 @app.get("/health")
 def health():
     return {"status": "ok", "dry_run": config.DRY_RUN, "trigger_states": list(config.TRIGGER_STATES)}
+
+
+@app.get("/login")
+def login_form(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+
+@app.post("/login")
+def login_submit(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email=email.strip().lower()).first()
+
+    if not user or not user.is_active or not verify_password(password, user.password_hash):
+        logger.warning("Failed login attempt for email=%s", email)
+        return templates.TemplateResponse(
+            "login.html", {"request": request, "error": "Invalid email or password."}, status_code=401
+        )
+
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+
+    token = create_session_token(user.id)
+    response = RedirectResponse(url="/internal", status_code=303)
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=True,  # only sent over HTTPS — fine, Caddy handles TLS
+        samesite="lax",
+        max_age=60 * 60 * 24,  # 24h, matches SESSION_EXPIRE_HOURS in auth.py
+    )
+    return response
+
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return response
+
+
+@app.get("/internal")
+def internal_home(request: Request, current_user: User = Depends(get_current_user)):
+    """
+    Placeholder landing page for the logistics interface — confirms login
+    works end to end. The real preparation-run list page replaces this.
+    """
+    return templates.TemplateResponse(
+        "internal_placeholder.html", {"request": request, "user_email": current_user.email}
+    )
 
 
 @app.post("/webhook/order")
