@@ -92,3 +92,77 @@ class RetryQueue(Base):
     status = Column(String, default="pending", nullable=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PreparationRun(Base):
+    """
+    One row per ShippingBo PreparationRun, created/updated from the
+    /webhook/preparation notifications. This is the parent record the
+    logistics interface lists — "what preparation runs exist, what state
+    are they in." The actual SKU/emplacement/quantity detail is NOT in
+    the webhook payload (confirmed from a real sample, Aug 26) — that
+    comes from an uploaded PDF, parsed into PreparationRunPack rows below.
+
+    Movu has no concept of "preparation run" at all — this table exists
+    purely for the middleware's own interface, matching the confirmed
+    design: Movu only ever receives individual pack-fetch requests, never
+    anything about the run/session as a whole.
+    """
+    __tablename__ = "preparation_run"
+    __table_args__ = {"schema": SCHEMA}
+
+    id = Column(String, primary_key=True)  # ShippingBo's own PreparationRun id, used directly as PK
+
+    # Real state values confirmed from live webhook traffic (Aug 26):
+    # packages_generated -> ps_generated -> (further states not yet observed)
+    state = Column(String, nullable=False)
+    package_count = Column(Integer, nullable=True)
+
+    pdf_uploaded = Column(Boolean, default=False, nullable=False)
+    pdf_filename = Column(String, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PreparationRunPack(Base):
+    """
+    One row per SKU/emplacement/quantity line parsed from an uploaded
+    preparation-run PDF. is_movu_stocked gets set by cross-checking the
+    parsed emplacement against Movu's live handling units (GET
+    /api/v3/handlingunits) at upload time — self-updating, no manually
+    maintained whitelist needed (replaces the earlier
+    MOVU_STOCKED_PRODUCT_REFS idea for this flow specifically).
+
+    status tracks the actual physical fulfillment per pack, driven by
+    Movu's own webhook notifications once a mission is requested — this
+    is the "4 of 7 packs delivered" granularity discussed, not a single
+    flag on the whole run.
+    """
+    __tablename__ = "preparation_run_pack"
+    __table_args__ = {"schema": SCHEMA}
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    preparation_run_id = Column(String, nullable=False, index=True)
+
+    sku = Column(String, nullable=False)
+    designation = Column(String, nullable=True)
+    emplacement = Column(String, nullable=False)  # raw value as parsed from the PDF
+    quantity = Column(Integer, nullable=False)
+
+    # Set at upload time by checking `emplacement` against Movu's live
+    # handling units. False/null emplacements (e.g. "RELOAD7"-style,
+    # non-Movu stock) are kept in the table for visibility but excluded
+    # from any Movu mission request.
+    is_movu_stocked = Column(Boolean, nullable=True)
+    movu_handling_unit_id = Column(String, nullable=True)
+
+    # pending | mission_requested | delivered | ignored_not_movu
+    status = Column(String, default="pending", nullable=False)
+
+    mission_requested_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
