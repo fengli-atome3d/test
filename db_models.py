@@ -1,12 +1,18 @@
 """
-ORM models for the middleware's own bookkeeping tables — NOT Movu's or
-ShippingBo's data. These live in the `middleware` schema, isolated from
-Movu Ops's own tables in the same `movu_ops` database (same Postgres
-instance on VM100, separate schema — see DB decision #3 in the project log).
+ORM models for the middleware's own tables. As of Aug 26, these live in a
+FULLY DEDICATED Postgres instance (its own container on VM101), not shared
+with Movu's Postgres anymore — see docker-compose.yml's "postgres" service.
 
-Nothing here stores product/SKU data as a source of truth. This is purely
-the "translation ledger" between ShippingBo/Xano order IDs and Movu order/
-handling-unit IDs, plus idempotency and retry bookkeeping.
+This resolves the risk flagged after Sam's email (Aug 24): Movu explicitly
+stated they don't authorize direct DB access, and since they had no
+official awareness the "middleware" schema existed inside their instance,
+any of their own backup/restore/upgrade operations could have silently
+wiped it. A dedicated instance removes that risk entirely — nothing here
+depends on Movu's database lifecycle in any way.
+
+No schema isolation machinery needed anymore (no cross-schema safety
+filters in migrations/env.py either) — this is genuinely our own database,
+default "public" schema, full control.
 """
 
 import uuid
@@ -15,18 +21,15 @@ from sqlalchemy import Column, String, DateTime, Integer, Boolean, JSON, func
 
 from database import Base
 
-SCHEMA = "middleware"
-
 
 class OrderMapping(Base):
     """
     One row per order the middleware has forwarded to Movu OPS. Maps the
-    Xano/ShippingBo order back to whatever Movu created, and tracks a
+    ShippingBo order back to whatever Movu created, and tracks a
     normalized state so we don't need to re-query Movu just to know
     "where is this order at."
     """
     __tablename__ = "order_mapping"
-    __table_args__ = {"schema": SCHEMA}
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
@@ -36,9 +39,6 @@ class OrderMapping(Base):
     terminal_id = Column(String, nullable=True)
     gate_id = Column(String, nullable=True)
 
-    # Normalized against Movu's real order states (Created, Active,
-    # Processed, Finished, Aborted, ...) — see Annex 16.1 in the functional
-    # design doc for the full list.
     current_state = Column(String, nullable=False, default="Created")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -49,22 +49,16 @@ class OrderMapping(Base):
 
 class WebhookLog(Base):
     """
-    Every inbound webhook (from Movu or from Xano), keyed on Movu's own
-    notification_id where available. This is what makes webhook handling
-    idempotent — if the same notification arrives twice (retries on Movu's
-    side, network blips), we can tell and skip reprocessing it.
+    Every inbound webhook (from Movu or from ShippingBo), keyed on a
+    notification_id where available. Makes webhook handling idempotent.
     """
     __tablename__ = "webhook_log"
-    __table_args__ = {"schema": SCHEMA}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # Movu's own notification UUID when the source is "movu". For Xano
-    # webhooks (no equivalent field observed yet), generate one ourselves
-    # so the uniqueness constraint still functions.
     notification_id = Column(String, nullable=False, unique=True, index=True)
 
-    source = Column(String, nullable=False)  # "movu" | "xano"
+    source = Column(String, nullable=False)  # "movu" | "shippingbo" | "shippingbo_preparation"
     notification_type = Column(String, nullable=False)
     payload = Column(JSON, nullable=True)
 
@@ -74,11 +68,10 @@ class WebhookLog(Base):
 
 class RetryQueue(Base):
     """
-    Failed outbound calls to Movu OPS (or Xano, if we ever call back into
-    it) land here instead of just being logged and dropped.
+    Failed outbound calls to Movu OPS (or ShippingBo) land here instead of
+    just being logged and dropped.
     """
     __tablename__ = "retry_queue"
-    __table_args__ = {"schema": SCHEMA}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
@@ -109,7 +102,6 @@ class PreparationRun(Base):
     anything about the run/session as a whole.
     """
     __tablename__ = "preparation_run"
-    __table_args__ = {"schema": SCHEMA}
 
     id = Column(String, primary_key=True)  # ShippingBo's own PreparationRun id, used directly as PK
 
@@ -133,16 +125,13 @@ class PreparationRunPack(Base):
     preparation-run PDF. is_movu_stocked gets set by cross-checking the
     parsed emplacement against Movu's live handling units (GET
     /api/v3/handlingunits) at upload time — self-updating, no manually
-    maintained whitelist needed (replaces the earlier
-    MOVU_STOCKED_PRODUCT_REFS idea for this flow specifically).
+    maintained whitelist needed.
 
-    status tracks the actual physical fulfillment per pack, driven by
-    Movu's own webhook notifications once a mission is requested — this
-    is the "4 of 7 packs delivered" granularity discussed, not a single
-    flag on the whole run.
+    status tracks actual physical fulfillment per pack, driven by Movu's
+    own webhook notifications once a mission is requested — "4 of 7 packs
+    delivered" granularity, not a single flag on the whole run.
     """
     __tablename__ = "preparation_run_pack"
-    __table_args__ = {"schema": SCHEMA}
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     preparation_run_id = Column(String, nullable=False, index=True)

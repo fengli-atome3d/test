@@ -1,4 +1,19 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: middleware-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - middleware-postgres-data:/var/lib/postgresql/data
+    # No published port — only reachable from other containers on this
+    # docker-compose network (by service name "postgres"), never from
+    # the host OS directly or the internet. Fully dedicated to the
+    # middleware, isolated from Movu's own Postgres instance entirely.
+    restart: unless-stopped
+
   atome-middleware:
     build: .
     container_name: atome-middleware
@@ -6,6 +21,8 @@ services:
       - "127.0.0.1:8000:8000"
     env_file:
       - .env
+    depends_on:
+      - postgres
     restart: unless-stopped
 
   loki:
@@ -69,6 +86,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  middleware-postgres-data:
   loki-data:
   prometheus-data:
   grafana-data:

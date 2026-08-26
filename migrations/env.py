@@ -10,7 +10,7 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import Base
-import db_models  # noqa: F401
+import db_models  # noqa: F401 — import so models register on Base.metadata
 import config as app_config
 
 config = context.config
@@ -22,18 +22,11 @@ target_metadata = Base.metadata
 
 config.set_main_option("sqlalchemy.url", app_config.MIDDLEWARE_DB_URL)
 
-
-# --- SAFETY: restrict autogenerate to the "middleware" schema ONLY --------
-def include_name(name, type_, parent_names):
-    if type_ == "schema":
-        return name == "middleware"
-    return True
-
-
-def include_object(object, name, type_, reflected, compare_to):
-    if type_ == "table" and getattr(object, "schema", None) not in (None, "middleware"):
-        return False
-    return True
+# NOTE: no cross-schema safety filter needed anymore (unlike the earlier
+# version of this file) — this is now a fully dedicated Postgres instance
+# containing ONLY the middleware's own tables. There's no risk of
+# accidentally generating DROP TABLE statements for someone else's data,
+# since nothing else lives in this database.
 
 
 def run_migrations_offline() -> None:
@@ -43,10 +36,6 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table_schema="middleware",
-        include_schemas=True,
-        include_name=include_name,
-        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -64,10 +53,6 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            version_table_schema="middleware",
-            include_schemas=True,
-            include_name=include_name,
-            include_object=include_object,
         )
 
         with context.begin_transaction():
