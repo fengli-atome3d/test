@@ -21,6 +21,13 @@ services:
       - "127.0.0.1:8000:8000"
     env_file:
       - .env
+    volumes:
+      # So files written inside the container (e.g. new Alembic migration
+      # files generated via `docker-compose run --rm atome-middleware
+      # alembic revision --autogenerate`) actually persist to VM101's
+      # disk, not just inside a temporary container that's deleted
+      # immediately after (--rm).
+      - ./migrations:/app/migrations
     depends_on:
       - postgres
     restart: unless-stopped
