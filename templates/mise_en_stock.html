@@ -136,7 +136,21 @@
         // Keep the scan input focused at all times, so a colleague can
         // just keep scanning barcodes back-to-back without clicking.
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('handling_unit_id').focus();
+            const input = document.getElementById('handling_unit_id');
+            input.focus();
+
+            // IMPORTANT: a PDA/barcode scanner sends an "Enter" keypress
+            // automatically after each scan. By default, a browser form
+            // with a single text input auto-submits on Enter — meaning
+            // scanning alone would trigger the Movu mission with no
+            // manual confirmation. Blocked here on purpose: scanning only
+            // fills the field, clicking "Envoyer en stockage" is the only
+            // way to actually submit and trigger the mission.
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                }
+            });
         });
     </script>
 </body>
