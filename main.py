@@ -113,13 +113,12 @@ INBOUND_COMPLETE_NOTIFICATION_TYPES = {"HandlingUnitStored", "OrderLineProcessed
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "dry_run_inbound": config.DRY_RUN_INBOUND,
-        "dry_run_outbound": config.DRY_RUN_OUTBOUND,
-        "dry_run_orders": config.DRY_RUN_ORDERS,
-        "trigger_states": list(config.TRIGGER_STATES),
-    }
+    # Deliberately minimal — no DRY_RUN flags or business logic details.
+    # This endpoint has no authentication (needed for basic liveness
+    # checks), so nothing operationally sensitive belongs here. Detailed
+    # status is available via `docker-compose logs` or Grafana, both
+    # already access-controlled.
+    return {"status": "ok"}
 
 
 @app.get("/login")
