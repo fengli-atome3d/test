@@ -13,9 +13,12 @@
                 overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
         th { text-align: left; padding: 0.75rem 1rem; background: #fafafa; font-size: 0.8rem;
              color: #52525b; border-bottom: 1px solid #e4e4e7; text-transform: uppercase; }
-        td { padding: 0.6rem 1rem; border-bottom: 1px solid #f4f4f5; font-size: 0.85rem; color: #27272a; }
+        td { padding: 0.6rem 1rem; border-bottom: 1px solid #f4f4f5; font-size: 0.85rem; color: #27272a;
+             vertical-align: top; }
         tr:last-child td { border-bottom: none; }
         tr.not-movu { opacity: 0.5; }
+        .item-line { display: block; padding: 0.1rem 0; }
+        .item-qty { color: #71717a; }
         .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 500; }
         .badge-yes { background: #d1fae5; color: #065f46; }
         .badge-no { background: #f4f4f5; color: #71717a; }
@@ -25,61 +28,69 @@
         .badge-dryrun { background: #e0e7ff; color: #3730a3; }
         .badge-sent { background: #ede9fe; color: #5b21b6; }
         .badge-pending { background: #fef3c7; color: #92400e; }
+        .trigger-form { display: flex; gap: 0.4rem; align-items: center; }
+        .trigger-form select { padding: 0.3rem 0.5rem; border: 1px solid #d4d4d8; border-radius: 6px; font-size: 0.8rem; }
         .trigger-btn { padding: 0.35rem 0.75rem; background: #18181b; color: white; border: none;
-                border-radius: 6px; font-size: 0.8rem; cursor: pointer; }
+                border-radius: 6px; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
         .trigger-btn:hover { background: #27272a; }
         a.back { color: #71717a; font-size: 0.85rem; text-decoration: none; }
     </style>
 </head>
 <body>
     <header>
-        <h1>Run {{ run.id }} — {{ packs|length }} lignes</h1>
+        <h1>Run {{ run.id }} — {{ groups|length }} emplacements</h1>
         <div class="user-info">{{ user_email }} <a href="/logout">Déconnexion</a></div>
     </header>
 
     <p class="summary">
         <a class="back" href="/preparation">← Retour à la liste</a> ·
         Fichier : {{ run.detail_filename or '—' }} ·
-        {{ packs | selectattr('is_movu_stocked') | list | length }} sur {{ packs|length }} suivis dans Movu
+        {{ total_lines }} lignes produit, {{ groups|length }} emplacements ·
+        {{ groups | selectattr('is_movu_stocked') | list | length }} suivis dans Movu
     </p>
 
-    {% if packs %}
+    {% if groups %}
     <table>
         <thead>
             <tr>
-                <th>SKU</th>
-                <th>Désignation</th>
                 <th>Emplacement</th>
-                <th>Qté</th>
+                <th>Produits (SKU × Qté)</th>
                 <th>Movu</th>
                 <th>Statut</th>
                 <th>Action</th>
             </tr>
         </thead>
         <tbody>
-            {% for p in packs %}
-            <tr class="{% if not p.is_movu_stocked %}not-movu{% endif %}">
-                <td>{{ p.sku }}</td>
-                <td>{{ p.designation or '—' }}</td>
-                <td>{{ p.emplacement }}</td>
-                <td>{{ p.quantity }}</td>
+            {% for g in groups %}
+            <tr class="{% if not g.is_movu_stocked %}not-movu{% endif %}">
+                <td><strong>{{ g.emplacement }}</strong></td>
                 <td>
-                    {% if p.is_movu_stocked %}<span class="badge badge-yes">Oui</span>
+                    {% for item in g.items %}
+                    <span class="item-line">{{ item.sku }} <span class="item-qty">× {{ item.quantity }}</span></span>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% if g.is_movu_stocked %}<span class="badge badge-yes">Oui</span>
                     {% else %}<span class="badge badge-no">Non</span>{% endif %}
                 </td>
                 <td>
-                    {% if p.status == 'completed' %}<span class="badge badge-success">Terminé</span>
-                    {% elif p.status == 'in_progress' %}<span class="badge badge-inprogress">En cours</span>
-                    {% elif p.status == 'failed' %}<span class="badge badge-failed">Échec</span>
-                    {% elif p.status == 'dry_run' %}<span class="badge badge-dryrun">Test (DRY_RUN)</span>
-                    {% elif p.status == 'sent' %}<span class="badge badge-sent">Envoyé</span>
+                    {% if g.status == 'completed' %}<span class="badge badge-success">Terminé</span>
+                    {% elif g.status == 'in_progress' %}<span class="badge badge-inprogress">En cours</span>
+                    {% elif g.status == 'failed' %}<span class="badge badge-failed">Échec</span>
+                    {% elif g.status == 'dry_run' %}<span class="badge badge-dryrun">Test (DRY_RUN)</span>
+                    {% elif g.status == 'sent' %}<span class="badge badge-sent">Envoyé</span>
                     {% else %}<span class="badge badge-pending">En attente</span>
                     {% endif %}
                 </td>
                 <td>
-                    {% if p.is_movu_stocked and p.status == 'pending' %}
-                    <form method="post" action="/preparation/packs/{{ p.id }}/trigger" style="margin:0;">
-                        <button type="submit" class="trigger-btn">Déclencher mission</button>
+                    {% if g.is_movu_stocked and g.status == 'pending' %}
+                    <form method="post" action="/preparation/packs/{{ g.representative_pack_id }}/trigger" class="trigger-form">
+                        <select name="terminal">
+                            <option value="MPS1">MPS1</option>
+                            <option value="MPS2">MPS2</option>
+                            <option value="MPS3">MPS3</option>
+                        </select>
+                        <button type="submit" class="trigger-btn">Déclencher</button>
                     </form>
                     {% endif %}
                 </td>

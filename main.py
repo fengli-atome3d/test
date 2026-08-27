@@ -402,28 +402,59 @@ def preparation_detail(
     run = db.query(PreparationRun).filter_by(id=run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Preparation run not found")
-    packs = db.query(PreparationRunPack).filter_by(preparation_run_id=run_id).order_by(PreparationRunPack.sku).all()
+
+    packs = db.query(PreparationRunPack).filter_by(preparation_run_id=run_id).order_by(PreparationRunPack.emplacement).all()
+
+    # Group by emplacement — Movu only cares about "go get this pack,"
+    # not the individual SKU lines inside it. Multiple products in the
+    # same physical pack share one emplacement and must trigger exactly
+    # ONE mission, not one per SKU line.
+    groups = {}
+    for p in packs:
+        if p.emplacement not in groups:
+            groups[p.emplacement] = {
+                "emplacement": p.emplacement,
+                "is_movu_stocked": p.is_movu_stocked,
+                "movu_handling_unit_id": p.movu_handling_unit_id,
+                "status": p.status,
+                "representative_pack_id": p.id,  # used as the trigger target for the whole group
+                "items": [],
+            }
+        groups[p.emplacement]["items"].append({
+            "sku": p.sku, "designation": p.designation, "quantity": p.quantity,
+        })
+
     return templates.TemplateResponse(
         request=request,
         name="preparation_detail.html",
-        context={"user_email": current_user.email, "run": run, "packs": packs},
+        context={
+            "user_email": current_user.email,
+            "run": run,
+            "groups": list(groups.values()),
+            "total_lines": len(packs),
+        },
     )
 
 
 @app.post("/preparation/packs/{pack_id}/trigger")
 async def preparation_trigger_pack(
-    pack_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    pack_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    terminal: str = Form(...),
 ):
     """
-    Triggers a Movu outbound Cycle order for one specific pack, using its
-    EXPLICIT handlingUnitId — the confirmed Flow B design (per the boss,
-    Aug 26): ShippingBo already resolved which pack holds the SKU, so
-    Movu is just told "go get this specific pack," not asked to resolve
-    stock itself (that's the older, superseded orderDemands approach).
+    Triggers a Movu outbound Cycle order for one physical pack (identified
+    by ONE representative PreparationRunPack row, but the resulting
+    status is applied to EVERY row sharing the same emplacement — since
+    multiple SKUs in the same pack must not trigger separate missions).
 
-    released=True directly (skips Movu's own staging step) — our button
-    click IS the human confirmation to execute now, no need for a
-    second manual release inside Movu's own UI.
+    Uses an EXPLICIT handlingUnitId — the confirmed Flow B design: Movu
+    is told "go get this specific pack," not asked to resolve stock
+    itself. Terminal is operator-selected (which station they're
+    physically working at); gate is left to Movu's own auto-assignment,
+    per the docs' confirmed behavior for outbound orders (unlike inbound,
+    where gate is a required field).
     """
     pack = db.query(PreparationRunPack).filter_by(id=pack_id).first()
     if not pack:
@@ -431,32 +462,40 @@ async def preparation_trigger_pack(
     if not pack.is_movu_stocked:
         raise HTTPException(status_code=400, detail="This pack is not tracked in Movu — cannot trigger a mission")
 
+    # Every row sharing this emplacement, within the same run, gets the
+    # same order/status — they represent one physical pack.
+    sibling_packs = db.query(PreparationRunPack).filter_by(
+        preparation_run_id=pack.preparation_run_id, emplacement=pack.emplacement,
+    ).all()
+
     movu_order_id = f"OUT-{pack.id[:8]}"
     movu_payload = {
         "id": movu_order_id,
         "type": "Cycle",
         "due": (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat(),
         "released": True,
-        "terminal": config.MOVU_TERMINAL_ID,
+        "terminal": terminal,
         "orderLines": [{"handlingUnitId": pack.movu_handling_unit_id}],
         "orderDemands": [],
     }
 
     if config.DRY_RUN:
         logger.info("[DRY_RUN] Would POST outbound Cycle order to Movu OPS: %s", movu_payload)
-        pack.status = "dry_run"
-        pack.movu_order_id = movu_order_id
+        new_status = "dry_run"
     else:
         headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
         async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
             try:
                 resp = await client.post(f"{config.MOVU_OPS_BASE_URL}/api/v3/orders", json=movu_payload, headers=headers)
                 resp.raise_for_status()
-                pack.status = "sent"
-                pack.movu_order_id = movu_order_id
+                new_status = "sent"
             except httpx.HTTPError as e:
                 logger.error("Failed to trigger outbound mission for pack %s: %s", pack_id, e)
-                pack.status = "failed"
+                new_status = "failed"
+
+    for sibling in sibling_packs:
+        sibling.status = new_status
+        sibling.movu_order_id = movu_order_id
 
     db.commit()
     return RedirectResponse(url=f"/preparation/{pack.preparation_run_id}", status_code=303)
@@ -710,7 +749,11 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
 
             pack_record = db.query(PreparationRunPack).filter_by(movu_order_id=movu_order_id).first()
             if pack_record and notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
-                pack_record.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                # Multiple rows can share this movu_order_id (siblings in
+                # the same physical pack) — update all of them, not just one.
+                sibling_packs = db.query(PreparationRunPack).filter_by(movu_order_id=movu_order_id).all()
+                for sibling in sibling_packs:
+                    sibling.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
                 db.commit()
 
         if notification_type in INBOUND_COMPLETE_NOTIFICATION_TYPES:
