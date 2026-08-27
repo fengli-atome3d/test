@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, Form
@@ -23,6 +24,27 @@ logger = logging.getLogger("atome_middleware")
 
 app = FastAPI(title="Atome3D Order Middleware")
 templates = Jinja2Templates(directory="templates")
+
+# Full state enum, confirmed from ShippingBo's own PreparationRun API docs
+# (Aug 26) — used for the state filter dropdown in the interface.
+PREPARATION_RUN_STATES = [
+    "new", "packages_generated", "ps_generated", "ps_downloaded",
+    "ps_printed", "shipped", "archived",
+]
+
+PARIS_TZ = ZoneInfo("Europe/Paris")
+
+
+def format_paris_time(dt):
+    """Jinja2 filter: render a UTC-aware datetime in France's local time."""
+    if dt is None:
+        return "—"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(PARIS_TZ).strftime("%d/%m/%Y %H:%M")
+
+
+templates.env.filters["paris_time"] = format_paris_time
 
 # Prometheus metrics at /metrics — request counts, latencies, etc, auto
 # instrumented. IMPORTANT: this endpoint must NEVER be exposed publicly on
@@ -83,12 +105,30 @@ def logout():
 
 
 @app.get("/internal")
-def internal_home(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    runs = db.query(PreparationRun).order_by(PreparationRun.created_at.desc()).all()
+def internal_home(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    state: str = "",
+    search_id: str = "",
+):
+    query = db.query(PreparationRun)
+    if state:
+        query = query.filter(PreparationRun.state == state)
+    if search_id:
+        query = query.filter(PreparationRun.id.ilike(f"%{search_id.strip()}%"))
+    runs = query.order_by(PreparationRun.created_at.desc()).all()
+
     return templates.TemplateResponse(
         request=request,
         name="internal_runs_list.html",
-        context={"user_email": current_user.email, "runs": runs},
+        context={
+            "user_email": current_user.email,
+            "runs": runs,
+            "states": PREPARATION_RUN_STATES,
+            "selected_state": state,
+            "search_id": search_id,
+        },
     )
 
 

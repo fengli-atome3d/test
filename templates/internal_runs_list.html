@@ -22,6 +22,15 @@
         .empty { padding: 3rem; text-align: center; color: #a1a1aa; }
         .action-link { color: #18181b; font-size: 0.85rem; text-decoration: none; font-weight: 500; }
         .action-link:hover { text-decoration: underline; }
+        .filters { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+        .filters select, .filters input { padding: 0.5rem 0.75rem; border: 1px solid #d4d4d8;
+                border-radius: 6px; font-size: 0.85rem; }
+        .filters input { flex: 1; max-width: 240px; }
+        .filters button { padding: 0.5rem 1rem; background: #18181b; color: white; border: none;
+                border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+        .filters button:hover { background: #27272a; }
+        .reset-link { font-size: 0.85rem; color: #71717a; text-decoration: none; }
+        .reset-link:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -32,6 +41,20 @@
             <a href="/logout">Déconnexion</a>
         </div>
     </header>
+
+    <form method="get" action="/internal" class="filters">
+        <select name="state">
+            <option value="">Tous les états</option>
+            {% for s in states %}
+            <option value="{{ s }}" {% if s == selected_state %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="search_id" placeholder="Rechercher par ID..." value="{{ search_id }}">
+        <button type="submit">Filtrer</button>
+        {% if selected_state or search_id %}
+        <a href="/internal" class="reset-link">Réinitialiser</a>
+        {% endif %}
+    </form>
 
     {% if runs %}
     <table>
@@ -58,7 +81,7 @@
                     <span class="badge badge-pending">En attente</span>
                     {% endif %}
                 </td>
-                <td>{{ run.created_at.strftime('%d/%m/%Y %H:%M') if run.created_at else '—' }}</td>
+                <td>{{ run.created_at | paris_time }}</td>
                 <td>
                     {% if not run.pdf_uploaded %}
                     <a class="action-link" href="/internal/runs/{{ run.id }}/upload">Upload PDF</a>
