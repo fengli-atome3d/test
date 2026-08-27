@@ -191,6 +191,7 @@ class InboundRequest(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     handling_unit_id = Column(String, nullable=False, index=True)  # the scanned barcode
+    gate = Column(String, nullable=True)  # which physical gate the colleague used
 
     movu_order_id = Column(String, nullable=True)
     # requested | dry_run | success | failed

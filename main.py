@@ -66,7 +66,35 @@ async def not_authenticated_handler(request: Request, exc: NotAuthenticatedExcep
 # Caddyfile. Only reachable internally (VM101 localhost / docker network),
 # which is where Prometheus itself scrapes it from.
 from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Gauge
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+# --- Stale inbound mission safety net -----------------------------------
+# Real gap, observed directly (Aug 27): a genuinely stuck Movu mission
+# never emitted a failure webhook — no OrderLineErrored, no OrderAborted,
+# nothing. Since webhook completeness can't be trusted for this, compute
+# the stale count LIVE on every Prometheus scrape (via set_function, no
+# separate scheduler needed) — a Grafana alert watches this metric.
+stale_inbound_gauge = Gauge(
+    "stale_inbound_requests_total",
+    "InboundRequests stuck at in_progress beyond STALE_INBOUND_THRESHOLD_MINUTES",
+)
+
+
+def _compute_stale_inbound_count():
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        threshold = datetime.now(timezone.utc) - timedelta(minutes=config.STALE_INBOUND_THRESHOLD_MINUTES)
+        return db.query(InboundRequest).filter(
+            InboundRequest.status == "in_progress",
+            InboundRequest.created_at < threshold,
+        ).count()
+    finally:
+        db.close()
+
+
+stale_inbound_gauge.set_function(_compute_stale_inbound_count)
 
 # Movu notification types that mean "an inbound handling unit finished
 # being stored" — this is when stock needs syncing to ShippingBo's
@@ -148,27 +176,15 @@ async def mise_en_stock_scan(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     handling_unit_id: str = Form(...),
+    gate: str = Form(...),
 ):
     """
-    Colleague scans a physical pack's barcode, clicks the button — this
-    creates a Movu "In" order for that specific handling unit, telling
-    Movu to store it (Movu decides WHERE, per its own slotting logic —
-    we only ever tell it WHICH pack).
-
-    ShippingBo independently already knows which product went into this
-    pack (their own scan process, a separate system) — the middleware
-    doesn't need or send product identity here at all, matching the
-    confirmed "carrier ID" design.
-
-    ASSUMPTIONS, not fully confirmed — flagging rather than silently
-    guessing:
-    - terminal="MPS3": the only terminal confirmed (via Movu's own
-      functional docs) to support inbound overweight/overfill detection
-    - gate="MPS3G1": hardcoded to the first gate; if MPS3 has multiple
-      inbound gates in practice, this needs to become a real choice,
-      not assumed
-    - storageProfile.stockId="1": intentional dummy value, matches the
-      documented project convention (Movu doesn't track product identity)
+    Colleague scans a physical pack's barcode, selects which physical gate
+    they're standing at, clicks the button — creates a Movu "In" order for
+    that specific handling unit at that specific gate. Gate is a REQUIRED
+    field for inbound orders per Movu's own docs (unlike outbound/Cycle,
+    where it's optional and auto-assigned) — only the colleague physically
+    present knows which gate they're using, so this can't be hardcoded.
     """
     handling_unit_id = handling_unit_id.strip()
     inbound_id = str(uuid.uuid4())
@@ -182,7 +198,7 @@ async def mise_en_stock_scan(
         "orderLines": [
             {
                 "handlingUnitId": handling_unit_id,
-                "gate": "MPS3G1",
+                "gate": gate,
                 "storageProfile": {"stockId": "1", "quality": "", "storageCategories": ["B"]},
             }
         ],
@@ -191,6 +207,7 @@ async def mise_en_stock_scan(
     record = InboundRequest(
         id=inbound_id,
         handling_unit_id=handling_unit_id,
+        gate=gate,
         requested_by_email=current_user.email,
     )
 

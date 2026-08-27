@@ -64,6 +64,12 @@
 
     <div class="scan-card">
         <form method="post" action="/mise-en-stock/scan">
+            <label for="gate">Portail (gate) utilisé</label>
+            <select id="gate" name="gate" required>
+                <option value="MPS3G1">MPS3G1</option>
+                <option value="MPS3G2">MPS3G2</option>
+                <option value="MPS3G3">MPS3G3</option>
+            </select>
             <label for="handling_unit_id">Scanner le code-barres du bac</label>
             <input type="text" id="handling_unit_id" name="handling_unit_id" autofocus required
                    placeholder="Scanner ou saisir l'ID du bac...">
@@ -92,6 +98,7 @@
         <thead>
             <tr>
                 <th>Bac (Handling Unit)</th>
+                <th>Gate</th>
                 <th>Statut</th>
                 <th>Ordre Movu</th>
                 <th>Par</th>
@@ -103,6 +110,7 @@
             {% for r in recent %}
             <tr>
                 <td>{{ r.handling_unit_id }}</td>
+                <td>{{ r.gate or '—' }}</td>
                 <td>
                     {% if r.status == 'completed' %}<span class="badge badge-success">Terminé</span>
                     {% elif r.status == 'in_progress' %}<span class="badge badge-inprogress">En cours</span>
