@@ -91,6 +91,14 @@ MOVU_STOCKED_PRODUCT_REFS = set(
 #   3. shippingbo_client.update_movu_stock() is actually implemented
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("1", "true", "yes")
 
+# --- Stale inbound mission detection ------------------------------------
+# Used by the Prometheus custom gauge (stale_inbound_requests_total) in
+# main.py. Threshold matches the Grafana SQL alert built the same day
+# ("Inbound mission stuck") — two independent detection mechanisms for
+# the same real gap (Movu doesn't reliably notify on physical failures,
+# confirmed from the obstructed-path incident weeks ago).
+STALE_INBOUND_THRESHOLD_MINUTES = int(os.getenv("STALE_INBOUND_THRESHOLD_MINUTES", "30"))
+
 # --- Middleware's own database (dedicated Postgres container on VM101) -----
 # As of Aug 26: fully dedicated Postgres container (docker-compose
 # "postgres" service), NOT shared with Movu's instance anymore. Resolves
