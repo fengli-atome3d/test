@@ -84,12 +84,21 @@ MOVU_STOCKED_PRODUCT_REFS = set(
 )
 
 # --- Safety switch ------------------------------------------------------------
-# While DRY_RUN is true, the middleware logs/returns the Movu payload it
-# *would* send instead of actually POSTing it. Flip to false only once:
-#   1. MOVU_STOCKED_PRODUCT_REFS is populated (or replaced by a real check)
-#   2. TRIGGER_STATES reflects ShippingBo's real state name, not the Xano one
-#   3. shippingbo_client.update_movu_stock() is actually implemented
+# LEGACY global switch — kept as the fallback default for the 3 specific
+# flags below, so an existing .env with just DRY_RUN=true still keeps
+# everything safe. Prefer setting the specific flags directly going
+# forward; this one alone no longer gates anything itself.
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("1", "true", "yes")
+
+# Split Aug 29 — these 3 flows have very different readiness levels and
+# should NEVER be toggled together by accident. Flipping the single old
+# DRY_RUN off to test one flow (e.g. mise-en-stock) would have also
+# silently activated the others, including ones still known-incomplete
+# (empty product whitelist, missing gate-release step). Each defaults to
+# the legacy DRY_RUN value unless explicitly overridden.
+DRY_RUN_INBOUND = os.getenv("DRY_RUN_INBOUND", str(DRY_RUN)).lower() in ("1", "true", "yes")
+DRY_RUN_OUTBOUND = os.getenv("DRY_RUN_OUTBOUND", str(DRY_RUN)).lower() in ("1", "true", "yes")
+DRY_RUN_ORDERS = os.getenv("DRY_RUN_ORDERS", str(DRY_RUN)).lower() in ("1", "true", "yes")
 
 # --- Stale inbound mission detection ------------------------------------
 # Used by the Prometheus custom gauge (stale_inbound_requests_total) in

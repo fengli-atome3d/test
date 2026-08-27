@@ -113,7 +113,13 @@ INBOUND_COMPLETE_NOTIFICATION_TYPES = {"HandlingUnitStored", "OrderLineProcessed
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "dry_run": config.DRY_RUN, "trigger_states": list(config.TRIGGER_STATES)}
+    return {
+        "status": "ok",
+        "dry_run_inbound": config.DRY_RUN_INBOUND,
+        "dry_run_outbound": config.DRY_RUN_OUTBOUND,
+        "dry_run_orders": config.DRY_RUN_ORDERS,
+        "trigger_states": list(config.TRIGGER_STATES),
+    }
 
 
 @app.get("/login")
@@ -245,8 +251,8 @@ async def mise_en_stock_scan(
         requested_by_email=current_user.email,
     )
 
-    if config.DRY_RUN:
-        logger.info("[DRY_RUN] Would POST inbound 'In' order to Movu OPS: %s", movu_payload)
+    if config.DRY_RUN_INBOUND:
+        logger.info("[DRY_RUN_INBOUND] Would POST inbound 'In' order to Movu OPS: %s", movu_payload)
         record.status = "dry_run"
         record.movu_order_id = movu_payload["id"]
     else:
@@ -569,8 +575,8 @@ async def preparation_trigger_pack(
         "orderDemands": [],
     }
 
-    if config.DRY_RUN:
-        logger.info("[DRY_RUN] Would POST outbound Cycle order to Movu OPS: %s", movu_payload)
+    if config.DRY_RUN_OUTBOUND:
+        logger.info("[DRY_RUN_OUTBOUND] Would POST outbound Cycle order to Movu OPS: %s", movu_payload)
         new_status = "dry_run"
     else:
         headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
@@ -666,8 +672,8 @@ async def receive_order_webhook(request: Request, db: Session = Depends(get_db))
         )
         return {"status": "no_demands", "skipped_items": result["skipped_items"]}
 
-    if config.DRY_RUN:
-        logger.info("[DRY_RUN] Would POST to Movu OPS: %s", movu_payload)
+    if config.DRY_RUN_ORDERS:
+        logger.info("[DRY_RUN_ORDERS] Would POST to Movu OPS: %s", movu_payload)
         return {
             "status": "dry_run",
             "movu_payload": movu_payload,
@@ -855,7 +861,7 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                     notification_id, notification_type, movu_order_id,
                 )
                 results.append({"notification_id": notification_id, "status": "no_mapping_skipped"})
-            elif config.DRY_RUN:
+            elif config.DRY_RUN_ORDERS:
                 logger.info(
                     "[DRY_RUN] Would sync stock to ShippingBo MOVU emplacement for order_mapping %s.",
                     mapping.id,
