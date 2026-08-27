@@ -23,6 +23,17 @@ SESSION_COOKIE_NAME = "session"
 SESSION_EXPIRE_HOURS = 24
 
 
+class NotAuthenticatedException(Exception):
+    """
+    Raised by get_current_user when a browser page visit isn't logged in.
+    Deliberately a DIFFERENT exception type than the plain HTTPException
+    used for webhook auth failures (ShippingBo/Movu) — this lets main.py
+    register a handler that redirects to /login for this one specifically,
+    without affecting webhook 401 responses, which should stay as JSON.
+    """
+    pass
+
+
 def hash_password(plain_password: str) -> str:
     return pwd_context.hash(plain_password)
 
@@ -49,19 +60,21 @@ def decode_session_token(token: str) -> Optional[str]:
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     """
     FastAPI dependency for protected routes. Reads the session cookie,
-    validates it, loads the User. Raises 401 if anything's wrong — no
-    session, expired session, tampered token, or a since-deactivated user.
+    validates it, loads the User. Raises NotAuthenticatedException if
+    anything's wrong — no session, expired session, tampered token, or a
+    since-deactivated user — which main.py's exception handler catches
+    and redirects to /login, rather than showing a raw JSON error.
     """
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
-        raise HTTPException(status_code=401, detail="Not logged in")
+        raise NotAuthenticatedException("Not logged in")
 
     user_id = decode_session_token(token)
     if not user_id:
-        raise HTTPException(status_code=401, detail="Session expired or invalid")
+        raise NotAuthenticatedException("Session expired or invalid")
 
     user = db.query(User).filter_by(id=user_id).first()
     if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="Account not found or disabled")
+        raise NotAuthenticatedException("Account not found or disabled")
 
     return user

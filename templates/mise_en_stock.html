@@ -35,6 +35,19 @@
         .badge-failed { background: #fee2e2; color: #991b1b; }
         .badge-dryrun { background: #e0e7ff; color: #3730a3; }
         .badge-requested { background: #fef3c7; color: #92400e; }
+        .badge-inprogress { background: #dbeafe; color: #1e40af; }
+        .badge-cancelled { background: #f4f4f5; color: #52525b; }
+        .badge-sent { background: #ede9fe; color: #5b21b6; }
+        .filters { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+        .filters select { padding: 0.5rem 0.75rem; border: 1px solid #d4d4d8; border-radius: 6px; font-size: 0.85rem; }
+        .filters button { padding: 0.5rem 1rem; background: #18181b; color: white; border: none;
+                border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+        .filters button:hover { background: #27272a; }
+        .reset-link { font-size: 0.85rem; color: #71717a; text-decoration: none; }
+        .reset-link:hover { text-decoration: underline; }
+        .cancel-btn { padding: 0.35rem 0.75rem; background: white; color: #b91c1c; border: 1px solid #fecaca;
+                border-radius: 6px; font-size: 0.8rem; cursor: pointer; }
+        .cancel-btn:hover { background: #fef2f2; }
     </style>
 </head>
 <body>
@@ -60,6 +73,20 @@
     </div>
 
     <h2 style="font-size: 1rem; color: #52525b;">Dernières demandes</h2>
+
+    <form method="get" action="/mise-en-stock" class="filters">
+        <select name="status">
+            <option value="">Tous les statuts</option>
+            {% for s in statuses %}
+            <option value="{{ s }}" {% if s == selected_status %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Filtrer</button>
+        {% if selected_status %}
+        <a href="/mise-en-stock" class="reset-link">Réinitialiser</a>
+        {% endif %}
+    </form>
+
     {% if recent %}
     <table>
         <thead>
@@ -69,6 +96,7 @@
                 <th>Ordre Movu</th>
                 <th>Par</th>
                 <th>Quand</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody>
@@ -76,9 +104,12 @@
             <tr>
                 <td>{{ r.handling_unit_id }}</td>
                 <td>
-                    {% if r.status == 'success' %}<span class="badge badge-success">Envoyé</span>
+                    {% if r.status == 'completed' %}<span class="badge badge-success">Terminé</span>
+                    {% elif r.status == 'in_progress' %}<span class="badge badge-inprogress">En cours</span>
                     {% elif r.status == 'failed' %}<span class="badge badge-failed">Échec</span>
+                    {% elif r.status == 'cancelled' %}<span class="badge badge-cancelled">Annulé</span>
                     {% elif r.status == 'dry_run' %}<span class="badge badge-dryrun">Test (DRY_RUN)</span>
+                    {% elif r.status == 'sent' %}<span class="badge badge-sent">Envoyé</span>
                     {% else %}<span class="badge badge-requested">Demandé</span>
                     {% endif %}
                     {% if r.error_message %}<div style="font-size: 0.75rem; color: #991b1b; margin-top: 0.25rem;">{{ r.error_message }}</div>{% endif %}
@@ -86,6 +117,13 @@
                 <td>{{ r.movu_order_id or '—' }}</td>
                 <td>{{ r.requested_by_email or '—' }}</td>
                 <td>{{ r.created_at | paris_time }}</td>
+                <td>
+                    {% if r.status in ['requested', 'sent', 'in_progress', 'dry_run'] %}
+                    <form method="post" action="/mise-en-stock/{{ r.id }}/cancel" style="margin:0;">
+                        <button type="submit" class="cancel-btn" onclick="return confirm('Annuler cette mission ?');">Annuler</button>
+                    </form>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>

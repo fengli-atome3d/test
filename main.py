@@ -14,7 +14,10 @@ from models import ShippingBoOrderWebhook
 from mapping import build_movu_order
 from database import get_db
 from db_models import OrderMapping, WebhookLog, User, PreparationRun, InboundRequest
-from auth import hash_password, verify_password, create_session_token, get_current_user, SESSION_COOKIE_NAME
+from auth import (
+    hash_password, verify_password, create_session_token, get_current_user,
+    SESSION_COOKIE_NAME, NotAuthenticatedException,
+)
 
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
@@ -32,6 +35,11 @@ PREPARATION_RUN_STATES = [
     "ps_printed", "shipped", "archived",
 ]
 
+# InboundRequest status lifecycle — "sent" means successfully created in
+# Movu, NOT yet physically complete. Real completion comes from
+# /webhook/movu notifications, updating the same row.
+INBOUND_STATUSES = ["requested", "dry_run", "sent", "in_progress", "completed", "cancelled", "failed"]
+
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
 
@@ -45,6 +53,12 @@ def format_paris_time(dt):
 
 
 templates.env.filters["paris_time"] = format_paris_time
+
+
+@app.exception_handler(NotAuthenticatedException)
+async def not_authenticated_handler(request: Request, exc: NotAuthenticatedException):
+    """Redirects browser page visits to /login instead of showing raw JSON."""
+    return RedirectResponse(url="/login", status_code=303)
 
 # Prometheus metrics at /metrics — request counts, latencies, etc, auto
 # instrumented. IMPORTANT: this endpoint must NEVER be exposed publicly on
@@ -105,12 +119,26 @@ def logout():
 
 
 @app.get("/mise-en-stock")
-def mise_en_stock_page(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(20).all()
+def mise_en_stock_page(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    status: str = "",
+):
+    query = db.query(InboundRequest)
+    if status:
+        query = query.filter(InboundRequest.status == status)
+    recent = query.order_by(InboundRequest.created_at.desc()).limit(50).all()
+
     return templates.TemplateResponse(
         request=request,
         name="mise_en_stock.html",
-        context={"user_email": current_user.email, "recent": recent},
+        context={
+            "user_email": current_user.email,
+            "recent": recent,
+            "selected_status": status,
+            "statuses": INBOUND_STATUSES,
+        },
     )
 
 
@@ -177,7 +205,10 @@ async def mise_en_stock_scan(
             try:
                 resp = await client.post(url, json=movu_payload, headers=headers)
                 resp.raise_for_status()
-                record.status = "success"
+                # "sent" = successfully created in Movu, NOT yet physically
+                # complete. Real completion comes later via /webhook/movu
+                # (OrderFinished etc), which updates this same row.
+                record.status = "sent"
                 record.movu_order_id = movu_payload["id"]
             except httpx.HTTPError as e:
                 logger.error("Failed to create inbound order for %s: %s", handling_unit_id, e)
@@ -187,6 +218,43 @@ async def mise_en_stock_scan(
     db.add(record)
     db.commit()
 
+    return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+
+@app.post("/mise-en-stock/{inbound_id}/cancel")
+async def mise_en_stock_cancel(
+    inbound_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Aborts the Movu order for this inbound request — frees any location
+    reservation Movu had made for it. Same mechanism used weeks ago to
+    unblock a stuck test order (POST /api/v3/orders/{id}/abort).
+    """
+    record = db.query(InboundRequest).filter_by(id=inbound_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Inbound request not found")
+
+    if record.status in ("cancelled", "completed", "failed"):
+        # Already in a terminal state, nothing to cancel.
+        return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+    if record.status == "dry_run":
+        record.status = "cancelled"
+    else:
+        url = f"{config.MOVU_OPS_BASE_URL}/api/v3/orders/{record.movu_order_id}/abort"
+        headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+        async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+            try:
+                resp = await client.post(url, headers=headers)
+                resp.raise_for_status()
+                record.status = "cancelled"
+            except httpx.HTTPError as e:
+                logger.error("Failed to abort inbound order %s: %s", record.movu_order_id, e)
+                record.error_message = f"Cancel failed: {e}"
+
+    db.commit()
     return RedirectResponse(url="/mise-en-stock", status_code=303)
 
 
@@ -380,6 +448,24 @@ async def receive_preparation_webhook(request: Request, db: Session = Depends(ge
     return {"status": "logged_stub"}
 
 
+# Maps Movu notification types to InboundRequest status. Not every
+# notification type is listed — only ones that actually change our
+# tracked state; anything else leaves the row untouched.
+INBOUND_NOTIFICATION_STATUS_MAP = {
+    "OrderStarted": "in_progress",
+    "OrderLineStarted": "in_progress",
+    "OrderActive": "in_progress",
+    "OrderLineActive": "in_progress",
+    "OrderFinished": "completed",
+    "OrderLineFinished": "completed",
+    "OrderProcessed": "completed",
+    "OrderLineProcessed": "completed",
+    "HandlingUnitStored": "completed",
+    "OrderAborted": "cancelled",
+    "OrderLineErrored": "failed",
+}
+
+
 @app.post("/webhook/movu")
 async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
     """
@@ -436,6 +522,15 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
         if mapping:
             mapping.current_state = notification_type
             db.commit()
+
+        # Also check InboundRequest — the mise-en-stock flow's own rows,
+        # separate from OrderMapping (Flow A). A given movu_order_id only
+        # ever matches one of the two tables, never both.
+        if movu_order_id:
+            inbound_record = db.query(InboundRequest).filter_by(movu_order_id=movu_order_id).first()
+            if inbound_record and notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
+                inbound_record.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                db.commit()
 
         if notification_type in INBOUND_COMPLETE_NOTIFICATION_TYPES:
             if mapping is None:
