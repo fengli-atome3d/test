@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Atome3D Logistique — Mise en stock</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; margin: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        h1 { font-size: 1.25rem; margin: 0; color: #18181b; }
+        .user-info { font-size: 0.85rem; color: #71717a; }
+        .user-info a { text-decoration: none; }
+        .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; }
+        .nav-link:hover { color: #18181b; }
+        .nav-active { color: #18181b; font-weight: 600; }
+
+        .scan-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+                     margin-bottom: 2rem; max-width: 480px; }
+        .scan-card label { display: block; font-size: 0.85rem; color: #52525b; margin-bottom: 0.4rem; }
+        .scan-card input { width: 100%; padding: 0.75rem; font-size: 1.1rem; border: 2px solid #d4d4d8;
+                            border-radius: 6px; box-sizing: border-box; margin-bottom: 1rem; font-family: monospace; }
+        .scan-card input:focus { border-color: #18181b; outline: none; }
+        .scan-card button { width: 100%; padding: 0.75rem; background: #18181b; color: white; border: none;
+                             border-radius: 6px; font-size: 1rem; cursor: pointer; }
+        .scan-card button:hover { background: #27272a; }
+        .hint { font-size: 0.8rem; color: #a1a1aa; margin-top: -0.5rem; margin-bottom: 1rem; }
+
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px;
+                overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        th { text-align: left; padding: 0.75rem 1rem; background: #fafafa; font-size: 0.8rem;
+             color: #52525b; border-bottom: 1px solid #e4e4e7; text-transform: uppercase; }
+        td { padding: 0.75rem 1rem; border-bottom: 1px solid #f4f4f5; font-size: 0.9rem; color: #27272a; }
+        tr:last-child td { border-bottom: none; }
+        .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 500; }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-failed { background: #fee2e2; color: #991b1b; }
+        .badge-dryrun { background: #e0e7ff; color: #3730a3; }
+        .badge-requested { background: #fef3c7; color: #92400e; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Mise en stock</h1>
+        <div class="user-info">
+            <a href="/preparation" class="nav-link">Préparation</a>
+            <a href="/mise-en-stock" class="nav-link nav-active">Mise en stock</a>
+            <span style="margin: 0 0.75rem; color: #d4d4d8;">|</span>
+            {{ user_email }}
+            <a href="/logout">Déconnexion</a>
+        </div>
+    </header>
+
+    <div class="scan-card">
+        <form method="post" action="/mise-en-stock/scan">
+            <label for="handling_unit_id">Scanner le code-barres du bac</label>
+            <input type="text" id="handling_unit_id" name="handling_unit_id" autofocus required
+                   placeholder="Scanner ou saisir l'ID du bac...">
+            <div class="hint">Le focus reste sur ce champ — scanner directement, pas besoin de cliquer.</div>
+            <button type="submit">Envoyer en stockage</button>
+        </form>
+    </div>
+
+    <h2 style="font-size: 1rem; color: #52525b;">Dernières demandes</h2>
+    {% if recent %}
+    <table>
+        <thead>
+            <tr>
+                <th>Bac (Handling Unit)</th>
+                <th>Statut</th>
+                <th>Ordre Movu</th>
+                <th>Par</th>
+                <th>Quand</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in recent %}
+            <tr>
+                <td>{{ r.handling_unit_id }}</td>
+                <td>
+                    {% if r.status == 'success' %}<span class="badge badge-success">Envoyé</span>
+                    {% elif r.status == 'failed' %}<span class="badge badge-failed">Échec</span>
+                    {% elif r.status == 'dry_run' %}<span class="badge badge-dryrun">Test (DRY_RUN)</span>
+                    {% else %}<span class="badge badge-requested">Demandé</span>
+                    {% endif %}
+                    {% if r.error_message %}<div style="font-size: 0.75rem; color: #991b1b; margin-top: 0.25rem;">{{ r.error_message }}</div>{% endif %}
+                </td>
+                <td>{{ r.movu_order_id or '—' }}</td>
+                <td>{{ r.requested_by_email or '—' }}</td>
+                <td>{{ r.created_at | paris_time }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #a1a1aa;">Aucune demande pour l'instant.</p>
+    {% endif %}
+
+    <script>
+        // Keep the scan input focused at all times, so a colleague can
+        // just keep scanning barcodes back-to-back without clicking.
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('handling_unit_id').focus();
+        });
+    </script>
+</body>
+</html>

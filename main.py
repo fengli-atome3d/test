@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -13,7 +13,7 @@ import shippingbo_client
 from models import ShippingBoOrderWebhook
 from mapping import build_movu_order
 from database import get_db
-from db_models import OrderMapping, WebhookLog, User, PreparationRun
+from db_models import OrderMapping, WebhookLog, User, PreparationRun, InboundRequest
 from auth import hash_password, verify_password, create_session_token, get_current_user, SESSION_COOKIE_NAME
 
 from fastapi.templating import Jinja2Templates
@@ -85,7 +85,7 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
     db.commit()
 
     token = create_session_token(user.id)
-    response = RedirectResponse(url="/internal", status_code=303)
+    response = RedirectResponse(url="/preparation", status_code=303)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
@@ -104,8 +104,94 @@ def logout():
     return response
 
 
-@app.get("/internal")
-def internal_home(
+@app.get("/mise-en-stock")
+def mise_en_stock_page(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(20).all()
+    return templates.TemplateResponse(
+        request=request,
+        name="mise_en_stock.html",
+        context={"user_email": current_user.email, "recent": recent},
+    )
+
+
+@app.post("/mise-en-stock/scan")
+async def mise_en_stock_scan(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    handling_unit_id: str = Form(...),
+):
+    """
+    Colleague scans a physical pack's barcode, clicks the button — this
+    creates a Movu "In" order for that specific handling unit, telling
+    Movu to store it (Movu decides WHERE, per its own slotting logic —
+    we only ever tell it WHICH pack).
+
+    ShippingBo independently already knows which product went into this
+    pack (their own scan process, a separate system) — the middleware
+    doesn't need or send product identity here at all, matching the
+    confirmed "carrier ID" design.
+
+    ASSUMPTIONS, not fully confirmed — flagging rather than silently
+    guessing:
+    - terminal="MPS3": the only terminal confirmed (via Movu's own
+      functional docs) to support inbound overweight/overfill detection
+    - gate="MPS3G1": hardcoded to the first gate; if MPS3 has multiple
+      inbound gates in practice, this needs to become a real choice,
+      not assumed
+    - storageProfile.stockId="1": intentional dummy value, matches the
+      documented project convention (Movu doesn't track product identity)
+    """
+    handling_unit_id = handling_unit_id.strip()
+    inbound_id = str(uuid.uuid4())
+
+    movu_payload = {
+        "id": f"IN-{handling_unit_id}-{inbound_id[:8]}",
+        "type": "In",
+        "due": (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat(),
+        "released": True,  # inbound orders auto-execute, confirmed from live test data
+        "terminal": "MPS3",
+        "orderLines": [
+            {
+                "handlingUnitId": handling_unit_id,
+                "gate": "MPS3G1",
+                "storageProfile": {"stockId": "1", "quality": "", "storageCategories": ["B"]},
+            }
+        ],
+    }
+
+    record = InboundRequest(
+        id=inbound_id,
+        handling_unit_id=handling_unit_id,
+        requested_by_email=current_user.email,
+    )
+
+    if config.DRY_RUN:
+        logger.info("[DRY_RUN] Would POST inbound 'In' order to Movu OPS: %s", movu_payload)
+        record.status = "dry_run"
+        record.movu_order_id = movu_payload["id"]
+    else:
+        url = f"{config.MOVU_OPS_BASE_URL}/api/v3/orders"
+        headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+        async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+            try:
+                resp = await client.post(url, json=movu_payload, headers=headers)
+                resp.raise_for_status()
+                record.status = "success"
+                record.movu_order_id = movu_payload["id"]
+            except httpx.HTTPError as e:
+                logger.error("Failed to create inbound order for %s: %s", handling_unit_id, e)
+                record.status = "failed"
+                record.error_message = str(e)
+
+    db.add(record)
+    db.commit()
+
+    return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+
+@app.get("/preparation")
+def preparation_list(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

@@ -31,12 +31,18 @@
         .filters button:hover { background: #27272a; }
         .reset-link { font-size: 0.85rem; color: #71717a; text-decoration: none; }
         .reset-link:hover { text-decoration: underline; }
+        .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; }
+        .nav-link:hover { color: #18181b; }
+        .nav-active { color: #18181b; font-weight: 600; }
     </style>
 </head>
 <body>
     <header>
         <h1>Preparation Runs</h1>
         <div class="user-info">
+            <a href="/preparation" class="nav-link nav-active">Préparation</a>
+            <a href="/mise-en-stock" class="nav-link">Mise en stock</a>
+            <span style="margin: 0 0.75rem; color: #d4d4d8;">|</span>
             {{ user_email }}
             <a href="/logout">Déconnexion</a>
         </div>

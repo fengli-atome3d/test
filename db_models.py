@@ -177,3 +177,25 @@ class User(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class InboundRequest(Base):
+    """
+    One row per scanned pack sent to Movu for storage ("mise en stock" /
+    inbound flow). ShippingBo already knows independently which product
+    went into this pack (their own scan process, separate system) — Movu
+    doesn't need product identity, only the pack ID itself, per the
+    confirmed "carrier ID" design (Movu resolves location, not content).
+    """
+    __tablename__ = "inbound_requests"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    handling_unit_id = Column(String, nullable=False, index=True)  # the scanned barcode
+
+    movu_order_id = Column(String, nullable=True)
+    # requested | dry_run | success | failed
+    status = Column(String, default="requested", nullable=False)
+    error_message = Column(String, nullable=True)
+
+    requested_by_email = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
