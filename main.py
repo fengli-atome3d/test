@@ -227,7 +227,13 @@ async def mise_en_stock_scan(
             {
                 "handlingUnitId": handling_unit_id,
                 "gate": gate,
-                "storageProfile": {"stockId": "1", "quality": "", "storageCategories": ["B"]},
+                "barcodes": [handling_unit_id],
+                # Confirmed field name from Atome 3D.docx chapter 7 + real
+                # swagger.json example (Aug 27) — "categories", NOT
+                # "storageCategories". The old key was silently wrong
+                # this whole time; only harmless because DRY_RUN=true
+                # meant it was never actually sent to Movu.
+                "storageProfile": {"stockId": "1", "quality": "", "categories": ["B"]},
             }
         ],
     }
