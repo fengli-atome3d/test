@@ -12,6 +12,10 @@
         .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; }
         .nav-link:hover { color: #18181b; }
         .nav-active { color: #18181b; font-weight: 600; }
+        .pagination { display: flex; gap: 1rem; align-items: center; justify-content: center;
+                margin-top: 1.5rem; font-size: 0.85rem; color: #52525b; }
+        .pagination a { color: #18181b; text-decoration: none; font-weight: 500; }
+        .pagination a:hover { text-decoration: underline; }
 
         .scan-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
                      margin-bottom: 2rem; max-width: 480px; }
@@ -87,6 +91,11 @@
             <option value="{{ s }}" {% if s == selected_status %}selected{% endif %}>{{ s }}</option>
             {% endfor %}
         </select>
+        <select name="per_page">
+            <option value="25" {% if per_page == 25 %}selected{% endif %}>25 / page</option>
+            <option value="50" {% if per_page == 50 %}selected{% endif %}>50 / page</option>
+            <option value="100" {% if per_page == 100 %}selected{% endif %}>100 / page</option>
+        </select>
         <button type="submit">Filtrer</button>
         {% if selected_status %}
         <a href="/mise-en-stock" class="reset-link">Réinitialiser</a>
@@ -138,6 +147,18 @@
     </table>
     {% else %}
     <p style="color: #a1a1aa;">Aucune demande pour l'instant.</p>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="/mise-en-stock?status={{ selected_status }}&per_page={{ per_page }}&page={{ page - 1 }}">← Précédent</a>
+        {% endif %}
+        <span>Page {{ page }} / {{ total_pages }} ({{ total_count }} au total)</span>
+        {% if page < total_pages %}
+        <a href="/mise-en-stock?status={{ selected_status }}&per_page={{ per_page }}&page={{ page + 1 }}">Suivant →</a>
+        {% endif %}
+    </div>
     {% endif %}
 
     <script>

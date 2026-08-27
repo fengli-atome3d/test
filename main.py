@@ -160,11 +160,27 @@ def mise_en_stock_page(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     status: str = "",
+    page: int = 1,
+    per_page: int = 25,
 ):
+    if per_page not in (25, 50, 100):
+        per_page = 25
+    page = max(1, page)
+
     query = db.query(InboundRequest)
     if status:
         query = query.filter(InboundRequest.status == status)
-    recent = query.order_by(InboundRequest.created_at.desc()).limit(50).all()
+
+    total_count = query.count()
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+    page = min(page, total_pages)
+
+    recent = (
+        query.order_by(InboundRequest.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -174,6 +190,10 @@ def mise_en_stock_page(
             "recent": recent,
             "selected_status": status,
             "statuses": INBOUND_STATUSES,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "total_count": total_count,
         },
     )
 
@@ -290,13 +310,29 @@ def preparation_list(
     db: Session = Depends(get_db),
     state: str = "",
     search_id: str = "",
+    page: int = 1,
+    per_page: int = 25,
 ):
+    if per_page not in (25, 50, 100):
+        per_page = 25
+    page = max(1, page)
+
     query = db.query(PreparationRun)
     if state:
         query = query.filter(PreparationRun.state == state)
     if search_id:
         query = query.filter(PreparationRun.id.ilike(f"%{search_id.strip()}%"))
-    runs = query.order_by(PreparationRun.created_at.desc()).all()
+
+    total_count = query.count()
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+    page = min(page, total_pages)
+
+    runs = (
+        query.order_by(PreparationRun.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -307,6 +343,10 @@ def preparation_list(
             "states": PREPARATION_RUN_STATES,
             "selected_state": state,
             "search_id": search_id,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "total_count": total_count,
         },
     )
 

@@ -34,6 +34,10 @@
         .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; }
         .nav-link:hover { color: #18181b; }
         .nav-active { color: #18181b; font-weight: 600; }
+        .pagination { display: flex; gap: 1rem; align-items: center; justify-content: center;
+                margin-top: 1.5rem; font-size: 0.85rem; color: #52525b; }
+        .pagination a { color: #18181b; text-decoration: none; font-weight: 500; }
+        .pagination a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -48,7 +52,7 @@
         </div>
     </header>
 
-    <form method="get" action="/internal" class="filters">
+    <form method="get" action="/preparation" class="filters">
         <select name="state">
             <option value="">Tous les états</option>
             {% for s in states %}
@@ -56,9 +60,14 @@
             {% endfor %}
         </select>
         <input type="text" name="search_id" placeholder="Rechercher par ID..." value="{{ search_id }}">
+        <select name="per_page">
+            <option value="25" {% if per_page == 25 %}selected{% endif %}>25 / page</option>
+            <option value="50" {% if per_page == 50 %}selected{% endif %}>50 / page</option>
+            <option value="100" {% if per_page == 100 %}selected{% endif %}>100 / page</option>
+        </select>
         <button type="submit">Filtrer</button>
         {% if selected_state or search_id %}
-        <a href="/internal" class="reset-link">Réinitialiser</a>
+        <a href="/preparation" class="reset-link">Réinitialiser</a>
         {% endif %}
     </form>
 
@@ -101,6 +110,18 @@
     </table>
     {% else %}
     <div class="empty">Aucun preparation run pour l'instant.</div>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="/preparation?state={{ selected_state }}&search_id={{ search_id }}&per_page={{ per_page }}&page={{ page - 1 }}">← Précédent</a>
+        {% endif %}
+        <span>Page {{ page }} / {{ total_pages }} ({{ total_count }} au total)</span>
+        {% if page < total_pages %}
+        <a href="/preparation?state={{ selected_state }}&search_id={{ search_id }}&per_page={{ per_page }}&page={{ page + 1 }}">Suivant →</a>
+        {% endif %}
+    </div>
     {% endif %}
 </body>
 </html>
