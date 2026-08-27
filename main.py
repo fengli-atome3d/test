@@ -1,10 +1,12 @@
 import logging
 import uuid
+import csv
+import io
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import FastAPI, Request, HTTPException, Depends, Form
+from fastapi import FastAPI, Request, HTTPException, Depends, Form, UploadFile, File
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -13,7 +15,7 @@ import shippingbo_client
 from models import ShippingBoOrderWebhook
 from mapping import build_movu_order
 from database import get_db
-from db_models import OrderMapping, WebhookLog, User, PreparationRun, InboundRequest
+from db_models import OrderMapping, WebhookLog, User, PreparationRun, PreparationRunPack, InboundRequest
 from auth import (
     hash_password, verify_password, create_session_token, get_current_user,
     SESSION_COOKIE_NAME, NotAuthenticatedException,
@@ -303,6 +305,163 @@ def preparation_list(
     )
 
 
+@app.get("/preparation/{run_id}/upload")
+def preparation_upload_form(
+    run_id: str, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    run = db.query(PreparationRun).filter_by(id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Preparation run not found")
+    return templates.TemplateResponse(
+        request=request, name="preparation_upload.html", context={"user_email": current_user.email, "run": run}
+    )
+
+
+@app.post("/preparation/{run_id}/upload")
+async def preparation_upload_csv(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+):
+    """
+    Parses the uploaded CSV (Sku, Désignation, EAN-13, Emplacement, Qté —
+    real ShippingBo export format, confirmed Aug 27) into
+    PreparationRunPack rows. Cross-checks each row's Emplacement against
+    Movu's LIVE handling units (one API call for the whole file, not per
+    row) to set is_movu_stocked — self-updating, no manually maintained
+    whitelist. Non-Movu emplacements (e.g. "0.A001"-style, the OTHER
+    warehouse's own location codes) are kept for visibility but excluded
+    from any mission trigger.
+    """
+    run = db.query(PreparationRun).filter_by(id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Preparation run not found")
+
+    raw_bytes = await file.read()
+    text = raw_bytes.decode("utf-8-sig")  # utf-8-sig strips a BOM if Excel added one
+    reader = csv.DictReader(io.StringIO(text))
+
+    # Fetch Movu's live handling units ONCE for the whole upload, not per row.
+    movu_handling_unit_ids = set()
+    headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+    async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+        try:
+            resp = await client.get(f"{config.MOVU_OPS_BASE_URL}/api/v3/handlingunits", headers=headers)
+            resp.raise_for_status()
+            movu_handling_unit_ids = {hu["id"] for hu in resp.json()}
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch Movu handling units for cross-check: %s", e)
+            # Continue anyway — rows just won't be matched, safer than
+            # blocking the whole upload on a transient Movu API issue.
+
+    parsed_count = 0
+    matched_count = 0
+    for row in reader:
+        emplacement = (row.get("Emplacement") or "").strip()
+        sku = (row.get("Sku") or "").strip()
+        if not emplacement or not sku:
+            continue  # skip malformed/blank lines rather than error the whole upload
+
+        try:
+            quantity = int(row.get("Qté", "0").strip())
+        except ValueError:
+            quantity = 0
+
+        is_movu_stocked = emplacement in movu_handling_unit_ids
+        if is_movu_stocked:
+            matched_count += 1
+
+        db.add(PreparationRunPack(
+            preparation_run_id=run_id,
+            sku=sku,
+            designation=row.get("Désignation"),
+            emplacement=emplacement,
+            quantity=quantity,
+            is_movu_stocked=is_movu_stocked,
+            movu_handling_unit_id=emplacement if is_movu_stocked else None,
+        ))
+        parsed_count += 1
+
+    run.detail_uploaded = True
+    run.detail_filename = file.filename
+    db.commit()
+
+    logger.info(
+        "Uploaded CSV for run %s: %d rows parsed, %d matched to Movu handling units",
+        run_id, parsed_count, matched_count,
+    )
+
+    return RedirectResponse(url=f"/preparation/{run_id}", status_code=303)
+
+
+@app.get("/preparation/{run_id}")
+def preparation_detail(
+    run_id: str, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    run = db.query(PreparationRun).filter_by(id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Preparation run not found")
+    packs = db.query(PreparationRunPack).filter_by(preparation_run_id=run_id).order_by(PreparationRunPack.sku).all()
+    return templates.TemplateResponse(
+        request=request,
+        name="preparation_detail.html",
+        context={"user_email": current_user.email, "run": run, "packs": packs},
+    )
+
+
+@app.post("/preparation/packs/{pack_id}/trigger")
+async def preparation_trigger_pack(
+    pack_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """
+    Triggers a Movu outbound Cycle order for one specific pack, using its
+    EXPLICIT handlingUnitId — the confirmed Flow B design (per the boss,
+    Aug 26): ShippingBo already resolved which pack holds the SKU, so
+    Movu is just told "go get this specific pack," not asked to resolve
+    stock itself (that's the older, superseded orderDemands approach).
+
+    released=True directly (skips Movu's own staging step) — our button
+    click IS the human confirmation to execute now, no need for a
+    second manual release inside Movu's own UI.
+    """
+    pack = db.query(PreparationRunPack).filter_by(id=pack_id).first()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Pack not found")
+    if not pack.is_movu_stocked:
+        raise HTTPException(status_code=400, detail="This pack is not tracked in Movu — cannot trigger a mission")
+
+    movu_order_id = f"OUT-{pack.id[:8]}"
+    movu_payload = {
+        "id": movu_order_id,
+        "type": "Cycle",
+        "due": (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat(),
+        "released": True,
+        "terminal": config.MOVU_TERMINAL_ID,
+        "orderLines": [{"handlingUnitId": pack.movu_handling_unit_id}],
+        "orderDemands": [],
+    }
+
+    if config.DRY_RUN:
+        logger.info("[DRY_RUN] Would POST outbound Cycle order to Movu OPS: %s", movu_payload)
+        pack.status = "dry_run"
+        pack.movu_order_id = movu_order_id
+    else:
+        headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+        async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+            try:
+                resp = await client.post(f"{config.MOVU_OPS_BASE_URL}/api/v3/orders", json=movu_payload, headers=headers)
+                resp.raise_for_status()
+                pack.status = "sent"
+                pack.movu_order_id = movu_order_id
+            except httpx.HTTPError as e:
+                logger.error("Failed to trigger outbound mission for pack %s: %s", pack_id, e)
+                pack.status = "failed"
+
+    db.commit()
+    return RedirectResponse(url=f"/preparation/{pack.preparation_run_id}", status_code=303)
+
+
 @app.post("/webhook/order")
 async def receive_order_webhook(request: Request, db: Session = Depends(get_db)):
     """
@@ -547,6 +706,11 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
             inbound_record = db.query(InboundRequest).filter_by(movu_order_id=movu_order_id).first()
             if inbound_record and notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
                 inbound_record.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                db.commit()
+
+            pack_record = db.query(PreparationRunPack).filter_by(movu_order_id=movu_order_id).first()
+            if pack_record and notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
+                pack_record.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
                 db.commit()
 
         if notification_type in INBOUND_COMPLETE_NOTIFICATION_TYPES:

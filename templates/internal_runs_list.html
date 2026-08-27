@@ -81,7 +81,7 @@
                 <td>{{ run.state }}</td>
                 <td>{{ run.package_count if run.package_count is not none else '—' }}</td>
                 <td>
-                    {% if run.pdf_uploaded %}
+                    {% if run.detail_uploaded %}
                     <span class="badge badge-uploaded">Uploadé</span>
                     {% else %}
                     <span class="badge badge-pending">En attente</span>
@@ -89,10 +89,10 @@
                 </td>
                 <td>{{ run.created_at | paris_time }}</td>
                 <td>
-                    {% if not run.pdf_uploaded %}
-                    <a class="action-link" href="/internal/runs/{{ run.id }}/upload">Upload PDF</a>
+                    {% if not run.detail_uploaded %}
+                    <a class="action-link" href="/preparation/{{ run.id }}/upload">Upload CSV</a>
                     {% else %}
-                    <a class="action-link" href="/internal/runs/{{ run.id }}">Voir détail</a>
+                    <a class="action-link" href="/preparation/{{ run.id }}">Voir détail</a>
                     {% endif %}
                 </td>
             </tr>

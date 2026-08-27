@@ -110,8 +110,8 @@ class PreparationRun(Base):
     state = Column(String, nullable=False)
     package_count = Column(Integer, nullable=True)
 
-    pdf_uploaded = Column(Boolean, default=False, nullable=False)
-    pdf_filename = Column(String, nullable=True)
+    detail_uploaded = Column(Boolean, default=False, nullable=False)
+    detail_filename = Column(String, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
@@ -147,12 +147,10 @@ class PreparationRunPack(Base):
     # from any Movu mission request.
     is_movu_stocked = Column(Boolean, nullable=True)
     movu_handling_unit_id = Column(String, nullable=True)
+    movu_order_id = Column(String, nullable=True)  # correlates /webhook/movu notifications back to this row
 
-    # pending | mission_requested | delivered | ignored_not_movu
+    # pending | dry_run | sent | in_progress | completed | cancelled | failed
     status = Column(String, default="pending", nullable=False)
-
-    mission_requested_at = Column(DateTime(timezone=True), nullable=True)
-    delivered_at = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload CSV — Run {{ run.id }}</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; margin: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        h1 { font-size: 1.25rem; margin: 0; color: #18181b; }
+        .user-info { font-size: 0.85rem; color: #71717a; }
+        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+                max-width: 480px; }
+        .card p { color: #52525b; font-size: 0.9rem; }
+        input[type="file"] { width: 100%; padding: 0.75rem; border: 2px dashed #d4d4d8; border-radius: 6px;
+                              margin-bottom: 1rem; box-sizing: border-box; }
+        button { padding: 0.75rem 1.5rem; background: #18181b; color: white; border: none;
+                 border-radius: 6px; font-size: 0.95rem; cursor: pointer; }
+        button:hover { background: #27272a; }
+        a { color: #71717a; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Upload CSV — Run {{ run.id }}</h1>
+        <div class="user-info">{{ user_email }} <a href="/logout">Déconnexion</a></div>
+    </header>
+    <div class="card">
+        <p>Format attendu : colonnes <code>Sku, Désignation, EAN-13, Emplacement, Qté</code> (export ShippingBo standard).</p>
+        <form method="post" action="/preparation/{{ run.id }}/upload" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".csv" required>
+            <button type="submit">Envoyer</button>
+        </form>
+        <p><a href="/preparation">← Retour à la liste</a></p>
+    </div>
+</body>
+</html>
