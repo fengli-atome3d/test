@@ -26,6 +26,9 @@
     </header>
     <div class="card">
         <p>Format attendu : colonnes <code>Sku, Désignation, EAN-13, Emplacement, Qté</code> (export ShippingBo standard).</p>
+        {% if error %}
+        <div style="background: #fef2f2; color: #b91c1c; padding: 0.6rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem;">{{ error }}</div>
+        {% endif %}
         <form method="post" action="/preparation/{{ run.id }}/upload" enctype="multipart/form-data">
             <input type="file" name="file" accept=".csv" required>
             <button type="submit">Envoyer</button>

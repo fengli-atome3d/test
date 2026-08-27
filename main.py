@@ -2,6 +2,7 @@ import logging
 import uuid
 import csv
 import io
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -41,6 +42,11 @@ PREPARATION_RUN_STATES = [
 # Movu, NOT yet physically complete. Real completion comes from
 # /webhook/movu notifications, updating the same row.
 INBOUND_STATUSES = ["requested", "dry_run", "sent", "in_progress", "completed", "cancelled", "failed"]
+
+# Matches "preparation_run_summary_6397693.csv" or the "(1)"/"(2)" browser
+# duplicate-download suffix variant — captures just the numeric run ID,
+# stopping at the first non-digit character either way.
+PREPARATION_RUN_FILENAME_PATTERN = re.compile(r"preparation_run_summary_(\d+)")
 
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
@@ -313,13 +319,14 @@ def preparation_upload_form(
     if not run:
         raise HTTPException(status_code=404, detail="Preparation run not found")
     return templates.TemplateResponse(
-        request=request, name="preparation_upload.html", context={"user_email": current_user.email, "run": run}
+        request=request, name="preparation_upload.html", context={"user_email": current_user.email, "run": run, "error": None}
     )
 
 
 @app.post("/preparation/{run_id}/upload")
 async def preparation_upload_csv(
     run_id: str,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     file: UploadFile = File(...),
@@ -333,14 +340,51 @@ async def preparation_upload_csv(
     whitelist. Non-Movu emplacements (e.g. "0.A001"-style, the OTHER
     warehouse's own location codes) are kept for visibility but excluded
     from any mission trigger.
+
+    Two safety checks before parsing:
+    - Filename sanity check: if the filename matches ShippingBo's export
+      naming pattern but the embedded run ID doesn't match the run being
+      uploaded to, reject with a clear error rather than silently
+      loading the wrong run's data.
+    - Re-upload safety: any existing PreparationRunPack rows for this run
+      are deleted first, so uploading a corrected CSV cleanly REPLACES
+      the previous (possibly wrong) data instead of appending duplicates
+      on top of it.
     """
     run = db.query(PreparationRun).filter_by(id=run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Preparation run not found")
 
+    filename_match = PREPARATION_RUN_FILENAME_PATTERN.search(file.filename or "")
+    if filename_match and filename_match.group(1) != run_id:
+        logger.warning(
+            "Upload rejected: filename '%s' suggests run %s, but uploading to run %s",
+            file.filename, filename_match.group(1), run_id,
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name="preparation_upload.html",
+            context={
+                "user_email": current_user.email,
+                "run": run,
+                "error": (
+                    f"Le nom du fichier indique le run {filename_match.group(1)}, "
+                    f"mais vous êtes sur le run {run_id}. Vérifiez que c'est le bon fichier avant de réessayer."
+                ),
+            },
+            status_code=400,
+        )
+
     raw_bytes = await file.read()
     text = raw_bytes.decode("utf-8-sig")  # utf-8-sig strips a BOM if Excel added one
     reader = csv.DictReader(io.StringIO(text))
+
+    # Re-upload safety: replace, don't append. Without this, re-uploading
+    # a corrected CSV after an initial mistake would just duplicate every
+    # row on top of the wrong ones already in the table.
+    deleted_count = db.query(PreparationRunPack).filter_by(preparation_run_id=run_id).delete()
+    if deleted_count:
+        logger.info("Cleared %d existing pack rows for run %s before re-upload", deleted_count, run_id)
 
     # Fetch Movu's live handling units ONCE for the whole upload, not per row.
     movu_handling_unit_ids = set()
@@ -418,9 +462,9 @@ def preparation_detail(
                 "movu_handling_unit_id": p.movu_handling_unit_id,
                 "status": p.status,
                 "representative_pack_id": p.id,  # used as the trigger target for the whole group
-                "items": [],
+                "lines": [],
             }
-        groups[p.emplacement]["items"].append({
+        groups[p.emplacement]["lines"].append({
             "sku": p.sku, "designation": p.designation, "quantity": p.quantity,
         })
 

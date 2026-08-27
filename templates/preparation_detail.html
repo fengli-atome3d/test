@@ -65,7 +65,7 @@
             <tr class="{% if not g.is_movu_stocked %}not-movu{% endif %}">
                 <td><strong>{{ g.emplacement }}</strong></td>
                 <td>
-                    {% for item in g.items %}
+                    {% for item in g.lines %}
                     <span class="item-line">{{ item.sku }} <span class="item-qty">× {{ item.quantity }}</span></span>
                     {% endfor %}
                 </td>
