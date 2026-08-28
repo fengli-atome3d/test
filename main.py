@@ -16,7 +16,7 @@ import shippingbo_client
 from models import ShippingBoOrderWebhook
 from mapping import build_movu_order
 from database import get_db
-from db_models import OrderMapping, WebhookLog, User, PreparationRun, PreparationRunPack, InboundRequest
+from db_models import OrderMapping, WebhookLog, User, PreparationRun, PreparationRunPack, InboundRequest, ReplenishmentRequest
 from auth import (
     hash_password, verify_password, create_session_token, get_current_user,
     SESSION_COOKIE_NAME, NotAuthenticatedException,
@@ -192,12 +192,17 @@ def mise_en_stock_page(
         .all()
     )
 
+    recent_replenishments = (
+        db.query(ReplenishmentRequest).order_by(ReplenishmentRequest.created_at.desc()).limit(20).all()
+    )
+
     return templates.TemplateResponse(
         request=request,
         name="mise_en_stock.html",
         context={
             "user_email": current_user.email,
             "recent": recent,
+            "recent_replenishments": recent_replenishments,
             "selected_status": status,
             "statuses": INBOUND_STATUSES,
             "page": page,
@@ -346,6 +351,97 @@ async def mise_en_stock_cancel(
                 logger.error("Failed to abort inbound order %s: %s", record.movu_order_id, e)
                 record.error_message = f"Cancel failed: {e}"
 
+    db.commit()
+    return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+
+@app.get("/api/handling-units/search")
+async def search_handling_units(q: str = ""):
+    """
+    Search assistance for "Appeler un bac" — since the pack is physically
+    inside the rack (unscannable), the colleague identifies it by typing
+    a partial ID, matched against Movu's LIVE handling unit list. Avoids
+    typos calling the wrong pack entirely.
+    """
+    q = q.strip().upper()
+    if len(q) < 2:
+        return {"results": []}
+
+    headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+    async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+        try:
+            resp = await client.get(f"{config.MOVU_OPS_BASE_URL}/api/v3/handlingunits", headers=headers)
+            resp.raise_for_status()
+            all_units = resp.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch Movu handling units for search: %s", e)
+            return {"results": [], "error": "Could not reach Movu OPS"}
+
+    matches = [hu["id"] for hu in all_units if q in hu.get("id", "").upper()]
+    return {"results": matches[:20]}
+
+
+@app.post("/mise-en-stock/call-pack")
+async def mise_en_stock_call_pack(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    handling_unit_id: str = Form(...),
+):
+    """
+    "Appeler un bac" — calls an EXISTING handling unit (already inside
+    Movu, empty or partially stocked, Movu doesn't distinguish) out to
+    MPS3, so a colleague can add more product before sending it back via
+    the normal mise-en-stock scan flow. Confirmed pattern from Atome
+    3D.docx: "Replenishment... can be done by creating an out order...
+    and create a new in order with the adjusted parameters."
+
+    Always targets MPS3, not session terminal — the whole point is to
+    bring the pack somewhere the colleague can ALSO do the mise-en-stock
+    re-inbound scan afterward, which only works at MPS3.
+
+    released:true (not false) — the "mandatory false" rule from 9.1 was
+    explicitly scoped to Cycle/piece-picking, not Out orders. The docs
+    describe released:true for Out as "immediately to the workstation,"
+    which is what we want here — no staging benefit applies to this
+    one-directional retrieval.
+    """
+    handling_unit_id = handling_unit_id.strip()
+    record_id = str(uuid.uuid4())
+
+    movu_payload = {
+        "id": f"REPL-{handling_unit_id}-{record_id[:8]}",
+        "type": "Out",
+        "due": None,
+        "priority": None,
+        "released": True,
+        "terminal": "MPS3",
+        "orderLines": [{"handlingUnitId": handling_unit_id}],
+    }
+
+    record = ReplenishmentRequest(
+        id=record_id,
+        handling_unit_id=handling_unit_id,
+        requested_by_email=current_user.email,
+    )
+
+    if config.DRY_RUN_OUTBOUND:
+        logger.info("[DRY_RUN_OUTBOUND] Would POST replenishment 'Out' order to Movu OPS: %s", movu_payload)
+        record.status = "dry_run"
+        record.movu_order_id = movu_payload["id"]
+    else:
+        headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+        async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+            try:
+                resp = await client.post(f"{config.MOVU_OPS_BASE_URL}/api/v3/orders", json=movu_payload, headers=headers)
+                resp.raise_for_status()
+                record.status = "sent"
+                record.movu_order_id = movu_payload["id"]
+            except httpx.HTTPError as e:
+                logger.error("Failed to call pack %s for replenishment: %s", handling_unit_id, e)
+                record.status = "failed"
+                record.error_message = str(e)
+
+    db.add(record)
     db.commit()
     return RedirectResponse(url="/mise-en-stock", status_code=303)
 
@@ -567,22 +663,11 @@ def preparation_detail(
     )
 
 
-VALID_OUTBOUND_GATES = {
-    "MPS1G1", "MPS1G2", "MPS1G3",
-    "MPS2G1", "MPS2G2", "MPS2G3",
-    "MPS3G1", "MPS3G2", "MPS3G3",
-}
-# NOTE: MPS1/MPS2 having exactly 3 gates each (G1-G3) is an assumption
-# based on the confirmed MPS3 pattern — not independently verified for
-# MPS1/MPS2. Worth confirming before trusting this list completely.
-
-
 @app.post("/preparation/packs/{pack_id}/trigger")
 async def preparation_trigger_pack(
     pack_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    gate: str = Form(...),
 ):
     """
     Triggers a Movu outbound Cycle order for one physical pack (identified
@@ -590,13 +675,18 @@ async def preparation_trigger_pack(
     status is applied to EVERY row sharing the same emplacement — since
     multiple SKUs in the same pack must not trigger separate missions).
 
-    Gate is a SCAN input (colleague's physical gate barcode) — terminal
-    is DERIVED from the gate (e.g. "MPS1G2" -> "MPS1"). NOTE: Atome 3D
-    doc section 9.1 recommends NOT specifying gate for Cycle orders
-    (Movu Ops picks the best available gate, allowing better shuttle
-    queueing/performance) — this is a deliberate, confirmed tradeoff:
-    precise operator control over raw throughput, decided explicitly
-    rather than defaulted to the doc's recommendation.
+    Terminal now comes from the LOGGED-IN USER's own account (Aug 28) —
+    each physical terminal PC has its own dedicated login, so the
+    session itself carries terminal identity. No form input, no
+    selector, no scan needed for this at all.
+
+    Gate is left UNSPECIFIED entirely, matching Atome 3D.docx section
+    9.1's explicit recommendation: "Unless explicitly needed the
+    specific gate should not be defined, Movu Ops will decide... allowing
+    shuttles to queue allowing for a higher performance." This required
+    NO change to the "Confirmer le picking" flow — that logic already
+    reads the REAL terminalId/gateId from Movu's own OrderLinePresented
+    notification, never from our own input.
 
     Uses an EXPLICIT handlingUnitId — the confirmed Flow B design: Movu
     is told "go get this specific pack," not asked to resolve stock
@@ -608,16 +698,18 @@ async def preparation_trigger_pack(
     nearby therefore limiting travel time during picking." Since a
     released:false order sits in staging and never starts on its own,
     an immediate follow-up call to /release is required — combined into
-    this single button click (confirmed choice, not a true two-phase
-    staging workflow) so the operator's experience stays "one click,
-    one mission," while the actual API sequence stays compliant with
-    the documented requirement.
+    this single button click.
     """
-    gate = gate.strip().upper()
-    if gate not in VALID_OUTBOUND_GATES:
-        logger.warning("Rejected outbound trigger: invalid gate '%s' (from barcode scan)", gate)
-        raise HTTPException(status_code=400, detail=f"Gate scanné invalide : '{gate}'.")
-    terminal = gate[:4]  # "MPS1G2" -> "MPS1"
+    terminal = (current_user.terminal or "").strip().upper()
+    if terminal not in {"MPS1", "MPS2", "MPS3"}:
+        logger.warning(
+            "Rejected outbound trigger: user %s has no valid terminal set (got '%s')",
+            current_user.email, terminal,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Votre compte n'est associé à aucun terminal valide (MPS1/MPS2/MPS3) — contactez un administrateur.",
+        )
 
     pack = db.query(PreparationRunPack).filter_by(id=pack_id).first()
     if not pack:
@@ -639,7 +731,10 @@ async def preparation_trigger_pack(
         "priority": None,
         "released": False,  # MANDATORY false per Atome 3D.docx 9.1 — see docstring
         "terminal": terminal,
-        "orderLines": [{"handlingUnitId": pack.movu_handling_unit_id, "gate": gate, "slot": None}],
+        # NOTE: "gate" key intentionally OMITTED — Movu decides, per
+        # confirmed doc recommendation. "slot" also omitted (only
+        # relevant for multi-orderline sequencing, not used here).
+        "orderLines": [{"handlingUnitId": pack.movu_handling_unit_id}],
     }
 
     if config.DRY_RUN_OUTBOUND:
@@ -1006,6 +1101,22 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                 elif notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
                     for sibling in sibling_packs:
                         sibling.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                    db.commit()
+
+            # Replenishment ("Appeler un bac") — Out order for retrieving
+            # an existing pack. Only needs OrderLinePresented (tells the
+            # colleague which gate to go to); no release/return handling
+            # here, since the return trip is a fresh In order via the
+            # normal mise-en-stock scan flow, not this order's lifecycle.
+            replenishment_record = db.query(ReplenishmentRequest).filter_by(movu_order_id=movu_order_id).first()
+            if replenishment_record:
+                if notification_type == PRESENTED_NOTIFICATION_TYPE:
+                    replenishment_record.status = "presented"
+                    replenishment_record.presented_terminal_id = payload.get("terminalId")
+                    replenishment_record.presented_gate_id = payload.get("gateId")
+                    db.commit()
+                elif notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
+                    replenishment_record.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
                     db.commit()
 
         if notification_type in INBOUND_COMPLETE_NOTIFICATION_TYPES:

@@ -175,6 +175,13 @@ class User(Base):
     email = Column(String, nullable=False, unique=True, index=True)
     password_hash = Column(String, nullable=False)
 
+    # Terminal identity, for accounts dedicated to a specific physical
+    # station PC (e.g. "MPS1", "MPS2", "MPS3"). NULL for office/admin
+    # accounts. Used by the preparation trigger and replenishment
+    # actions instead of asking the colleague to select/scan terminal
+    # every time — the logged-in account IS the terminal.
+    terminal = Column(String, nullable=True)
+
     # Lets an account be disabled without deleting it (keeps history/audit
     # trail intact if someone leaves the team).
     is_active = Column(Boolean, default=True, nullable=False)
@@ -199,6 +206,41 @@ class InboundRequest(Base):
 
     movu_order_id = Column(String, nullable=True)
     # requested | dry_run | success | failed
+    status = Column(String, default="requested", nullable=False)
+    error_message = Column(String, nullable=True)
+
+    requested_by_email = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReplenishmentRequest(Base):
+    """
+    "Appeler un bac" — calls an EXISTING handling unit (already inside
+    Movu's racks, empty or partially stocked — Movu doesn't distinguish)
+    out to a gate so a colleague can add more product to it. Confirmed
+    from Atome 3D.docx: "Replenishment of partially filled boxes...
+    can be done by creating an out order, making the adjustments on WMS
+    side and create a new in order with the adjusted parameters."
+
+    So this table only tracks the OUT half (retrieval). Once the pack
+    is presented, the colleague physically adds product, then uses the
+    EXISTING, unchanged mise-en-stock scan flow to send it back via a
+    fresh In order — reusing InboundRequest, not this table, for that
+    second half.
+    """
+    __tablename__ = "replenishment_requests"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    handling_unit_id = Column(String, nullable=False, index=True)  # typed, not scanned — pack is inside the rack
+
+    movu_order_id = Column(String, nullable=True)
+
+    # Captured from the OrderLinePresented notification — tells the
+    # colleague which gate to physically go to.
+    presented_terminal_id = Column(String, nullable=True)
+    presented_gate_id = Column(String, nullable=True)
+
+    # requested | dry_run | sent | in_progress | presented | failed
     status = Column(String, default="requested", nullable=False)
     error_message = Column(String, nullable=True)
 

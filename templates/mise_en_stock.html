@@ -84,6 +84,21 @@
         </form>
     </div>
 
+    <div class="scan-card">
+        <label for="call-pack-search" style="display: block; font-size: 0.8rem; color: #52525b; margin-bottom: 0.4rem;">
+            Réapprovisionnement — Appeler un bac existant (déjà dans Movu) vers MPS3
+        </label>
+        <form method="post" action="/mise-en-stock/call-pack" class="scan-row" id="call-pack-form" autocomplete="off">
+            <div class="scan-field" style="position: relative;">
+                <input type="text" id="call-pack-search" name="handling_unit_id" required
+                       placeholder="Taper l'ID du bac (recherche assistée)...">
+                <div id="call-pack-results" style="position: absolute; top: 100%; left: 0; right: 0; background: white;
+                     border: 1px solid #d4d4d8; border-radius: 6px; max-height: 200px; overflow-y: auto; z-index: 10; display: none;"></div>
+            </div>
+            <button type="submit">Appeler ce bac</button>
+        </form>
+    </div>
+
     <h2 style="font-size: 1rem; color: #52525b;">Dernières demandes</h2>
 
     <form method="get" action="/mise-en-stock" class="filters">
@@ -163,6 +178,43 @@
     </div>
     {% endif %}
 
+    <h2 style="font-size: 1rem; color: #52525b; margin-top: 2rem;">Réapprovisionnements en cours</h2>
+    {% if recent_replenishments %}
+    <table>
+        <thead>
+            <tr>
+                <th>Bac (Handling Unit)</th>
+                <th>Statut</th>
+                <th>Terminal / Gate</th>
+                <th>Par</th>
+                <th>Quand</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in recent_replenishments %}
+            <tr>
+                <td>{{ r.handling_unit_id }}</td>
+                <td>
+                    {% if r.status == 'presented' %}<span class="badge badge-presented">Présenté — allez chercher</span>
+                    {% elif r.status == 'failed' %}<span class="badge badge-failed">Échec</span>
+                    {% elif r.status == 'dry_run' %}<span class="badge badge-dryrun">Test (DRY_RUN)</span>
+                    {% elif r.status == 'sent' %}<span class="badge badge-sent">Appelé</span>
+                    {% elif r.status == 'in_progress' %}<span class="badge badge-inprogress">En route</span>
+                    {% else %}<span class="badge badge-requested">Demandé</span>
+                    {% endif %}
+                    {% if r.error_message %}<div style="font-size: 0.75rem; color: #991b1b; margin-top: 0.25rem;">{{ r.error_message }}</div>{% endif %}
+                </td>
+                <td>{% if r.presented_terminal_id %}{{ r.presented_terminal_id }} / {{ r.presented_gate_id }}{% else %}—{% endif %}</td>
+                <td>{{ r.requested_by_email or '—' }}</td>
+                <td>{{ r.created_at | paris_time }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #a1a1aa;">Aucun réapprovisionnement pour l'instant.</p>
+    {% endif %}
+
     <script>
         // Two-scan flow: gate barcode first, then pack barcode. Focus
         // starts on the gate field and auto-advances to the pack field
@@ -195,6 +247,53 @@
             gateInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && gateInput.value.trim()) {
                     packInput.focus();
+                }
+            });
+
+            // "Appeler un bac" search assistance — since the pack is
+            // physically inside the rack (unscannable), search Movu's
+            // live handling units as the colleague types, to avoid a
+            // typo calling the wrong pack.
+            const searchInput = document.getElementById('call-pack-search');
+            const resultsBox = document.getElementById('call-pack-results');
+            let searchTimer = null;
+
+            searchInput.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                const q = searchInput.value.trim();
+                if (q.length < 2) {
+                    resultsBox.style.display = 'none';
+                    return;
+                }
+                searchTimer = setTimeout(async () => {
+                    try {
+                        const resp = await fetch('/api/handling-units/search?q=' + encodeURIComponent(q));
+                        const data = await resp.json();
+                        if (!data.results || data.results.length === 0) {
+                            resultsBox.style.display = 'none';
+                            return;
+                        }
+                        resultsBox.innerHTML = data.results.map(id =>
+                            `<div class="search-result-item" style="padding: 0.5rem 0.75rem; cursor: pointer; font-family: monospace; font-size: 0.9rem;">${id}</div>`
+                        ).join('');
+                        resultsBox.style.display = 'block';
+                        resultsBox.querySelectorAll('.search-result-item').forEach((el) => {
+                            el.addEventListener('click', () => {
+                                searchInput.value = el.textContent;
+                                resultsBox.style.display = 'none';
+                            });
+                            el.addEventListener('mouseenter', () => { el.style.background = '#f4f4f5'; });
+                            el.addEventListener('mouseleave', () => { el.style.background = 'white'; });
+                        });
+                    } catch (err) {
+                        resultsBox.style.display = 'none';
+                    }
+                }, 300);
+            });
+
+            document.addEventListener('click', (e) => {
+                if (e.target !== searchInput) {
+                    resultsBox.style.display = 'none';
                 }
             });
         });
