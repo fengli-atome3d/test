@@ -17,16 +17,17 @@
         .pagination a { color: #18181b; text-decoration: none; font-weight: 500; }
         .pagination a:hover { text-decoration: underline; }
 
-        .scan-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-                     margin-bottom: 2rem; max-width: 480px; }
-        .scan-card label { display: block; font-size: 0.85rem; color: #52525b; margin-bottom: 0.4rem; }
-        .scan-card input { width: 100%; padding: 0.75rem; font-size: 1.1rem; border: 2px solid #d4d4d8;
-                            border-radius: 6px; box-sizing: border-box; margin-bottom: 1rem; font-family: monospace; }
-        .scan-card input:focus { border-color: #18181b; outline: none; }
-        .scan-card button { width: 100%; padding: 0.75rem; background: #18181b; color: white; border: none;
-                             border-radius: 6px; font-size: 1rem; cursor: pointer; }
-        .scan-card button:hover { background: #27272a; }
-        .hint { font-size: 0.8rem; color: #a1a1aa; margin-top: -0.5rem; margin-bottom: 1rem; }
+        .scan-card { background: white; padding: 1.25rem 1.5rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+                     margin-bottom: 1.5rem; }
+        .scan-row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; }
+        .scan-field { display: flex; flex-direction: column; flex: 1; min-width: 220px; }
+        .scan-field label { font-size: 0.75rem; color: #52525b; margin-bottom: 0.3rem; }
+        .scan-field input { padding: 0.6rem 0.75rem; font-size: 1rem; border: 2px solid #d4d4d8;
+                             border-radius: 6px; box-sizing: border-box; font-family: monospace; }
+        .scan-field input:focus { border-color: #18181b; outline: none; }
+        .scan-row button { padding: 0.65rem 1.5rem; background: #18181b; color: white; border: none;
+                            border-radius: 6px; font-size: 0.95rem; cursor: pointer; white-space: nowrap; }
+        .scan-row button:hover { background: #27272a; }
 
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px;
                 overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
@@ -68,16 +69,17 @@
 
     <div class="scan-card">
         {% if error %}
-        <div style="background: #fef2f2; color: #b91c1c; padding: 0.6rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem;">{{ error }}</div>
+        <div style="background: #fef2f2; color: #b91c1c; padding: 0.6rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 0.75rem;">{{ error }}</div>
         {% endif %}
-        <form method="post" action="/mise-en-stock/scan">
-            <label for="gate">1. Scanner le badge du portail (gate)</label>
-            <input type="text" id="gate" name="gate" autofocus required
-                   placeholder="Scanner le badge du gate...">
-            <label for="handling_unit_id">2. Scanner le code-barres du bac</label>
-            <input type="text" id="handling_unit_id" name="handling_unit_id" required
-                   placeholder="Scanner l'ID du bac...">
-            <div class="hint">Scannez d'abord le gate, puis le bac — le focus avance automatiquement entre les deux champs.</div>
+        <form method="post" action="/mise-en-stock/scan" class="scan-row">
+            <div class="scan-field">
+                <label for="gate">1. Gate</label>
+                <input type="text" id="gate" name="gate" autofocus required placeholder="Scanner le badge...">
+            </div>
+            <div class="scan-field">
+                <label for="handling_unit_id">2. Bac</label>
+                <input type="text" id="handling_unit_id" name="handling_unit_id" required placeholder="Scanner l'ID du bac...">
+            </div>
             <button type="submit">Envoyer en stockage</button>
         </form>
     </div>

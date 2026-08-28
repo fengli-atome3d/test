@@ -43,6 +43,11 @@ PREPARATION_RUN_STATES = [
 # /webhook/movu notifications, updating the same row.
 INBOUND_STATUSES = ["requested", "dry_run", "sent", "in_progress", "completed", "cancelled", "failed"]
 
+# Only MPS3 supports inbound (confirmed from Movu's functional docs) —
+# a colleague scanning an MPS1/MPS2 badge by mistake must be rejected
+# clearly, not silently forwarded to Movu.
+VALID_INBOUND_GATES = {"MPS3G1", "MPS3G2", "MPS3G3"}
+
 # Matches "preparation_run_summary_6397693.csv" or the "(1)"/"(2)" browser
 # duplicate-download suffix variant — captures just the numeric run ID,
 # stopping at the first non-digit character either way.
@@ -212,14 +217,45 @@ async def mise_en_stock_scan(
     gate: str = Form(...),
 ):
     """
-    Colleague scans a physical pack's barcode, selects which physical gate
-    they're standing at, clicks the button — creates a Movu "In" order for
-    that specific handling unit at that specific gate. Gate is a REQUIRED
-    field for inbound orders per Movu's own docs (unlike outbound/Cycle,
-    where it's optional and auto-assigned) — only the colleague physically
-    present knows which gate they're using, so this can't be hardcoded.
+    Colleague scans a physical GATE barcode first, then a physical PACK
+    barcode, then clicks the button — creates a Movu "In" order for that
+    specific handling unit at that specific gate. Gate is a REQUIRED
+    field for inbound orders per Movu's own docs.
+
+    Only MPS3 supports inbound (confirmed from Movu's functional docs) —
+    MPS1/MPS2 gates are explicitly rejected here with a clear message,
+    not silently forwarded to Movu.
     """
     handling_unit_id = handling_unit_id.strip()
+    gate = gate.strip().upper()
+
+    if gate not in VALID_INBOUND_GATES:
+        logger.warning("Rejected mise-en-stock scan: invalid/unsupported gate '%s'", gate)
+        recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
+        if gate.startswith("MPS1") or gate.startswith("MPS2"):
+            error_msg = (
+                f"Ce portail ({gate}) ne peut pas traiter la mise en stock. "
+                f"Seul MPS3 gère l'entrée en stock — vérifiez que vous êtes au bon terminal."
+            )
+        else:
+            error_msg = f"Gate scanné invalide : '{gate}'. Attendu : MPS3G1, MPS3G2 ou MPS3G3."
+        return templates.TemplateResponse(
+            request=request,
+            name="mise_en_stock.html",
+            context={
+                "user_email": current_user.email,
+                "recent": recent,
+                "selected_status": "",
+                "statuses": INBOUND_STATUSES,
+                "page": 1,
+                "per_page": 25,
+                "total_pages": 1,
+                "total_count": len(recent),
+                "error": error_msg,
+            },
+            status_code=400,
+        )
+
     inbound_id = str(uuid.uuid4())
 
     movu_payload = {
