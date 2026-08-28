@@ -531,12 +531,22 @@ def preparation_detail(
     )
 
 
+VALID_OUTBOUND_GATES = {
+    "MPS1G1", "MPS1G2", "MPS1G3",
+    "MPS2G1", "MPS2G2", "MPS2G3",
+    "MPS3G1", "MPS3G2", "MPS3G3",
+}
+# NOTE: MPS1/MPS2 having exactly 3 gates each (G1-G3) is an assumption
+# based on the confirmed MPS3 pattern — not independently verified for
+# MPS1/MPS2. Worth confirming before trusting this list completely.
+
+
 @app.post("/preparation/packs/{pack_id}/trigger")
 async def preparation_trigger_pack(
     pack_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    terminal: str = Form(...),
+    gate: str = Form(...),
 ):
     """
     Triggers a Movu outbound Cycle order for one physical pack (identified
@@ -544,13 +554,35 @@ async def preparation_trigger_pack(
     status is applied to EVERY row sharing the same emplacement — since
     multiple SKUs in the same pack must not trigger separate missions).
 
+    Gate is a SCAN input (colleague's physical gate barcode) — terminal
+    is DERIVED from the gate (e.g. "MPS1G2" -> "MPS1"). NOTE: Atome 3D
+    doc section 9.1 recommends NOT specifying gate for Cycle orders
+    (Movu Ops picks the best available gate, allowing better shuttle
+    queueing/performance) — this is a deliberate, confirmed tradeoff:
+    precise operator control over raw throughput, decided explicitly
+    rather than defaulted to the doc's recommendation.
+
     Uses an EXPLICIT handlingUnitId — the confirmed Flow B design: Movu
     is told "go get this specific pack," not asked to resolve stock
-    itself. Terminal is operator-selected (which station they're
-    physically working at); gate is left to Movu's own auto-assignment,
-    per the docs' confirmed behavior for outbound orders (unlike inbound,
-    where gate is a required field).
+    itself.
+
+    IMPORTANT — released MUST be false. Confirmed from Atome 3D.docx
+    section 9.1: "It is mandatory for the Atome's operation to put the
+    released parameter at false, so all the bins can go to staging zone
+    nearby therefore limiting travel time during picking." Since a
+    released:false order sits in staging and never starts on its own,
+    an immediate follow-up call to /release is required — combined into
+    this single button click (confirmed choice, not a true two-phase
+    staging workflow) so the operator's experience stays "one click,
+    one mission," while the actual API sequence stays compliant with
+    the documented requirement.
     """
+    gate = gate.strip().upper()
+    if gate not in VALID_OUTBOUND_GATES:
+        logger.warning("Rejected outbound trigger: invalid gate '%s' (from barcode scan)", gate)
+        raise HTTPException(status_code=400, detail=f"Gate scanné invalide : '{gate}'.")
+    terminal = gate[:4]  # "MPS1G2" -> "MPS1"
+
     pack = db.query(PreparationRunPack).filter_by(id=pack_id).first()
     if not pack:
         raise HTTPException(status_code=404, detail="Pack not found")
@@ -568,14 +600,18 @@ async def preparation_trigger_pack(
         "id": movu_order_id,
         "type": "Cycle",
         "due": (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat(),
-        "released": True,
+        "priority": None,
+        "released": False,  # MANDATORY false per Atome 3D.docx 9.1 — see docstring
         "terminal": terminal,
-        "orderLines": [{"handlingUnitId": pack.movu_handling_unit_id}],
-        "orderDemands": [],
+        "orderLines": [{"handlingUnitId": pack.movu_handling_unit_id, "gate": gate, "slot": None}],
     }
 
     if config.DRY_RUN_OUTBOUND:
-        logger.info("[DRY_RUN_OUTBOUND] Would POST outbound Cycle order to Movu OPS: %s", movu_payload)
+        logger.info(
+            "[DRY_RUN_OUTBOUND] Would POST outbound order (released=false) then immediately "
+            "POST /api/v3/orders/%s/release to Movu OPS: %s",
+            movu_order_id, movu_payload,
+        )
         new_status = "dry_run"
     else:
         headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
@@ -583,14 +619,83 @@ async def preparation_trigger_pack(
             try:
                 resp = await client.post(f"{config.MOVU_OPS_BASE_URL}/api/v3/orders", json=movu_payload, headers=headers)
                 resp.raise_for_status()
-                new_status = "sent"
             except httpx.HTTPError as e:
-                logger.error("Failed to trigger outbound mission for pack %s: %s", pack_id, e)
+                logger.error("Failed to create outbound order for pack %s: %s", pack_id, e)
                 new_status = "failed"
+            else:
+                # Order created successfully but sitting in staging
+                # (released:false) — must explicitly release it now.
+                try:
+                    release_resp = await client.post(
+                        f"{config.MOVU_OPS_BASE_URL}/api/v3/orders/{movu_order_id}/release", headers=headers
+                    )
+                    release_resp.raise_for_status()
+                    new_status = "sent"
+                except httpx.HTTPError as e:
+                    # Order EXISTS in Movu (staged) but release failed —
+                    # this needs manual attention in Movu's own UI, not
+                    # a silent retry, since we don't want to double-release.
+                    logger.error(
+                        "Order %s created successfully but /release FAILED for pack %s: %s. "
+                        "Order is stuck in staging — check Movu Ops UI directly.",
+                        movu_order_id, pack_id, e,
+                    )
+                    new_status = "failed"
 
     for sibling in sibling_packs:
         sibling.status = new_status
         sibling.movu_order_id = movu_order_id
+
+    db.commit()
+    return RedirectResponse(url=f"/preparation/{pack.preparation_run_id}", status_code=303)
+
+
+@app.post("/preparation/packs/{pack_id}/confirm-picking")
+async def preparation_confirm_picking(
+    pack_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Colleague clicks this once they've physically finished picking from
+    a presented tote — sends it back to storage. Confirmed from Atome
+    3D.docx 9.3: "OrderLinePresented: At this point you will have to
+    call POST /api/v3/terminals/{terminalId}/gate/{gateId}/release to
+    store the tote back again." Only a human knows when picking is
+    actually done — this can never be automatic.
+    """
+    pack = db.query(PreparationRunPack).filter_by(id=pack_id).first()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Pack not found")
+    if pack.status != "presented":
+        raise HTTPException(status_code=400, detail="This pack isn't in 'presented' state — nothing to confirm")
+    if not pack.presented_terminal_id or not pack.presented_gate_id:
+        raise HTTPException(status_code=400, detail="Missing terminal/gate info — was OrderLinePresented ever received?")
+
+    sibling_packs = db.query(PreparationRunPack).filter_by(
+        preparation_run_id=pack.preparation_run_id, emplacement=pack.emplacement,
+    ).all()
+
+    if config.DRY_RUN_OUTBOUND:
+        logger.info(
+            "[DRY_RUN_OUTBOUND] Would POST /api/v3/terminals/%s/gate/%s/release for pack %s",
+            pack.presented_terminal_id, pack.presented_gate_id, pack_id,
+        )
+        new_status = "dry_run"
+    else:
+        headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+        url = f"{config.MOVU_OPS_BASE_URL}/api/v3/terminals/{pack.presented_terminal_id}/gate/{pack.presented_gate_id}/release"
+        async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+            try:
+                resp = await client.post(url, headers=headers)
+                resp.raise_for_status()
+                new_status = "returning"
+            except httpx.HTTPError as e:
+                logger.error("Failed to release gate for pack %s: %s", pack_id, e)
+                new_status = "failed"
+
+    for sibling in sibling_packs:
+        sibling.status = new_status
 
     db.commit()
     return RedirectResponse(url=f"/preparation/{pack.preparation_run_id}", status_code=303)
@@ -766,6 +871,7 @@ INBOUND_NOTIFICATION_STATUS_MAP = {
     "OrderLineStarted": "in_progress",
     "OrderActive": "in_progress",
     "OrderLineActive": "in_progress",
+    "OrderLineReleased": "returning",  # tote is on its way back to storage
     "OrderFinished": "completed",
     "OrderLineFinished": "completed",
     "OrderProcessed": "completed",
@@ -774,6 +880,11 @@ INBOUND_NOTIFICATION_STATUS_MAP = {
     "OrderAborted": "cancelled",
     "OrderLineErrored": "failed",
 }
+
+# OrderLinePresented is handled SEPARATELY, not via the generic map above
+# — it needs to capture terminalId/gateId from the payload (required for
+# the later /release call), not just set a status string.
+PRESENTED_NOTIFICATION_TYPE = "OrderLinePresented"
 
 
 @app.post("/webhook/movu")
@@ -843,13 +954,23 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                 db.commit()
 
             pack_record = db.query(PreparationRunPack).filter_by(movu_order_id=movu_order_id).first()
-            if pack_record and notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
-                # Multiple rows can share this movu_order_id (siblings in
-                # the same physical pack) — update all of them, not just one.
+            if pack_record:
                 sibling_packs = db.query(PreparationRunPack).filter_by(movu_order_id=movu_order_id).all()
-                for sibling in sibling_packs:
-                    sibling.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
-                db.commit()
+
+                if notification_type == PRESENTED_NOTIFICATION_TYPE:
+                    # Capture terminalId/gateId — needed for the release
+                    # call once the colleague confirms picking is done.
+                    presented_terminal = payload.get("terminalId")
+                    presented_gate = payload.get("gateId")
+                    for sibling in sibling_packs:
+                        sibling.status = "presented"
+                        sibling.presented_terminal_id = presented_terminal
+                        sibling.presented_gate_id = presented_gate
+                    db.commit()
+                elif notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
+                    for sibling in sibling_packs:
+                        sibling.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                    db.commit()
 
         if notification_type in INBOUND_COMPLETE_NOTIFICATION_TYPES:
             if mapping is None:

@@ -149,7 +149,13 @@ class PreparationRunPack(Base):
     movu_handling_unit_id = Column(String, nullable=True)
     movu_order_id = Column(String, nullable=True)  # correlates /webhook/movu notifications back to this row
 
-    # pending | dry_run | sent | in_progress | completed | cancelled | failed
+    # Captured from the OrderLinePresented notification — needed to call
+    # POST /api/v3/terminals/{terminalId}/gate/{gateId}/release once the
+    # colleague confirms picking is done (sends the tote back to storage).
+    presented_terminal_id = Column(String, nullable=True)
+    presented_gate_id = Column(String, nullable=True)
+
+    # pending | dry_run | sent | in_progress | presented | returning | completed | cancelled | failed
     status = Column(String, default="pending", nullable=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -67,17 +67,17 @@
     </header>
 
     <div class="scan-card">
+        {% if error %}
+        <div style="background: #fef2f2; color: #b91c1c; padding: 0.6rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem;">{{ error }}</div>
+        {% endif %}
         <form method="post" action="/mise-en-stock/scan">
-            <label for="gate">Portail (gate) utilisé</label>
-            <select id="gate" name="gate" required>
-                <option value="MPS3G1">MPS3G1</option>
-                <option value="MPS3G2">MPS3G2</option>
-                <option value="MPS3G3">MPS3G3</option>
-            </select>
-            <label for="handling_unit_id">Scanner le code-barres du bac</label>
-            <input type="text" id="handling_unit_id" name="handling_unit_id" autofocus required
-                   placeholder="Scanner ou saisir l'ID du bac...">
-            <div class="hint">Le focus reste sur ce champ — scanner directement, pas besoin de cliquer.</div>
+            <label for="gate">1. Scanner le badge du portail (gate)</label>
+            <input type="text" id="gate" name="gate" autofocus required
+                   placeholder="Scanner le badge du gate...">
+            <label for="handling_unit_id">2. Scanner le code-barres du bac</label>
+            <input type="text" id="handling_unit_id" name="handling_unit_id" required
+                   placeholder="Scanner l'ID du bac...">
+            <div class="hint">Scannez d'abord le gate, puis le bac — le focus avance automatiquement entre les deux champs.</div>
             <button type="submit">Envoyer en stockage</button>
         </form>
     </div>
@@ -162,22 +162,37 @@
     {% endif %}
 
     <script>
-        // Keep the scan input focused at all times, so a colleague can
-        // just keep scanning barcodes back-to-back without clicking.
+        // Two-scan flow: gate barcode first, then pack barcode. Focus
+        // starts on the gate field and auto-advances to the pack field
+        // once a gate scan completes — colleague never touches the
+        // keyboard/mouse between scans.
         document.addEventListener('DOMContentLoaded', () => {
-            const input = document.getElementById('handling_unit_id');
-            input.focus();
+            const gateInput = document.getElementById('gate');
+            const packInput = document.getElementById('handling_unit_id');
+            gateInput.focus();
 
             // IMPORTANT: a PDA/barcode scanner sends an "Enter" keypress
             // automatically after each scan. By default, a browser form
-            // with a single text input auto-submits on Enter — meaning
-            // scanning alone would trigger the Movu mission with no
-            // manual confirmation. Blocked here on purpose: scanning only
-            // fills the field, clicking "Envoyer en stockage" is the only
-            // way to actually submit and trigger the mission.
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
+            // auto-submits on Enter from certain inputs — meaning
+            // scanning alone could trigger the Movu mission with no
+            // manual confirmation. Blocked on BOTH fields on purpose:
+            // scanning only fills the field, clicking "Envoyer en
+            // stockage" is the only way to actually submit and trigger
+            // the mission.
+            [gateInput, packInput].forEach((el) => {
+                el.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                    }
+                });
+            });
+
+            // After the gate scan completes (Enter fires, blocked above,
+            // but still a real signal "scan done"), move focus to the
+            // pack field automatically for the next scan.
+            gateInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && gateInput.value.trim()) {
+                    packInput.focus();
                 }
             });
         });
