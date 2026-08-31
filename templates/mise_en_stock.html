@@ -156,6 +156,10 @@
                     <form method="post" action="/mise-en-stock/{{ r.id }}/cancel" style="margin:0;">
                         <button type="submit" class="cancel-btn" onclick="return confirm('Annuler cette mission ?');">Annuler</button>
                     </form>
+                    {% elif not r.movu_order_id %}
+                    <form method="post" action="/mise-en-stock/{{ r.id }}/delete" style="margin:0;">
+                        <button type="submit" class="cancel-btn" onclick="return confirm('Supprimer cette entrée ? Aucun ordre Movu associé.');">Supprimer</button>
+                    </form>
                     {% endif %}
                 </td>
             </tr>
@@ -188,6 +192,7 @@
                 <th>Terminal / Gate</th>
                 <th>Par</th>
                 <th>Quand</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody>
@@ -207,6 +212,13 @@
                 <td>{% if r.presented_terminal_id %}{{ r.presented_terminal_id }} / {{ r.presented_gate_id }}{% else %}—{% endif %}</td>
                 <td>{{ r.requested_by_email or '—' }}</td>
                 <td>{{ r.created_at | paris_time }}</td>
+                <td>
+                    {% if not r.movu_order_id %}
+                    <form method="post" action="/mise-en-stock/replenishment/{{ r.id }}/delete" style="margin:0;">
+                        <button type="submit" class="cancel-btn" onclick="return confirm('Supprimer cette entrée ? Aucun ordre Movu associé.');">Supprimer</button>
+                    </form>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>

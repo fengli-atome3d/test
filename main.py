@@ -530,6 +530,55 @@ async def mise_en_stock_cancel(
     return RedirectResponse(url="/mise-en-stock", status_code=303)
 
 
+@app.post("/mise-en-stock/{inbound_id}/delete")
+async def mise_en_stock_delete(
+    inbound_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Deletes a tracking row that never actually reached Movu — no
+    movu_order_id means nothing real exists in Movu to abort or worry
+    about, so this is a pure cleanup operation. Explicitly refuses to
+    delete anything WITH a movu_order_id — that must go through
+    "Annuler" (abort) first, never silently removed from tracking while
+    a real Movu order might still exist.
+    """
+    record = db.query(InboundRequest).filter_by(id=inbound_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Inbound request not found")
+    if record.movu_order_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cette demande a un ordre Movu associé — utilisez 'Annuler' d'abord, pas de suppression directe.",
+        )
+
+    db.delete(record)
+    db.commit()
+    return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+
+@app.post("/mise-en-stock/replenishment/{replenishment_id}/delete")
+async def mise_en_stock_replenishment_delete(
+    replenishment_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Same cleanup logic as above, for the replenishment ("Appeler un bac") table."""
+    record = db.query(ReplenishmentRequest).filter_by(id=replenishment_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Replenishment request not found")
+    if record.movu_order_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cette demande a un ordre Movu associé — pas de suppression directe.",
+        )
+
+    db.delete(record)
+    db.commit()
+    return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+
 @app.get("/api/handling-units/search")
 async def search_handling_units(q: str = ""):
     """
