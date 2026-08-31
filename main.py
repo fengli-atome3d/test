@@ -1407,6 +1407,13 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                 inbound_record.status = new_status
                 if new_status in ("failed", "cancelled"):
                     inbound_record.error_message = f"Movu notification: {notification_type}"
+                else:
+                    # Clear any stale error from an earlier Errored event
+                    # if a LATER notification moves this forward to a
+                    # genuine success — otherwise a mission that hiccups
+                    # then recovers shows a permanently confusing
+                    # "Terminé" badge next to old error text.
+                    inbound_record.error_message = None
                 db.commit()
 
             pack_record = db.query(PreparationRunPack).filter_by(movu_order_id=movu_order_id).first()
@@ -1445,6 +1452,8 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                     replenishment_record.status = new_status
                     if new_status in ("failed", "cancelled"):
                         replenishment_record.error_message = f"Movu notification: {notification_type}"
+                    else:
+                        replenishment_record.error_message = None
                     db.commit()
 
         if notification_type in INBOUND_COMPLETE_NOTIFICATION_TYPES:
