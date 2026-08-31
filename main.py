@@ -392,6 +392,50 @@ async def mise_en_stock_scan(
             status_code=400,
         )
 
+    # Duplicate-submission guard: block if this exact pack already has a
+    # request that hasn't reached a final state yet. Confirmed real
+    # scenario Aug 31: colleague re-scanned the same pack at different
+    # gates in quick succession, not realizing the first attempt was
+    # already accepted by Movu — each retry then hit a 409 Conflict,
+    # since Movu correctly refuses to double-book the same handling
+    # unit. State-based (not a fixed time cooldown) — a genuinely
+    # finished/failed/cancelled request doesn't block a fresh one.
+    existing_active = (
+        db.query(InboundRequest)
+        .filter(
+            InboundRequest.handling_unit_id == handling_unit_id,
+            InboundRequest.status.notin_(["failed", "cancelled", "completed"]),
+        )
+        .order_by(InboundRequest.created_at.desc())
+        .first()
+    )
+    if existing_active:
+        logger.warning(
+            "Rejected mise-en-stock scan: pack %s already has an active request (id=%s, status=%s, created=%s)",
+            handling_unit_id, existing_active.id, existing_active.status, existing_active.created_at,
+        )
+        recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
+        return templates.TemplateResponse(
+            request=request,
+            name="mise_en_stock.html",
+            context={
+                "user_email": current_user.email,
+                "recent": recent,
+                "selected_status": "",
+                "statuses": INBOUND_STATUSES,
+                "page": 1,
+                "per_page": 25,
+                "total_pages": 1,
+                "total_count": len(recent),
+                "error": (
+                    f"Ce bac ({handling_unit_id}) a déjà une demande en cours "
+                    f"(statut : {existing_active.status}, créée {existing_active.created_at.strftime('%H:%M')}). "
+                    f"Vérifiez le statut ci-dessous avant de rescanner — ne pas soumettre en double."
+                ),
+            },
+            status_code=409,
+        )
+
     inbound_id = str(uuid.uuid4())
 
     movu_payload = {
@@ -514,6 +558,7 @@ async def search_handling_units(q: str = ""):
 
 @app.post("/mise-en-stock/call-pack")
 async def mise_en_stock_call_pack(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     handling_unit_id: str = Form(...),
@@ -537,6 +582,49 @@ async def mise_en_stock_call_pack(
     one-directional retrieval.
     """
     handling_unit_id = handling_unit_id.strip()
+
+    # Same duplicate-submission guard as mise_en_stock_scan — same real
+    # risk (Movu rejects a second request for a pack already "checked
+    # out" under an unresolved first one).
+    existing_active = (
+        db.query(ReplenishmentRequest)
+        .filter(
+            ReplenishmentRequest.handling_unit_id == handling_unit_id,
+            ReplenishmentRequest.status.notin_(["failed", "cancelled", "completed"]),
+        )
+        .order_by(ReplenishmentRequest.created_at.desc())
+        .first()
+    )
+    if existing_active:
+        logger.warning(
+            "Rejected replenishment call: pack %s already has an active request (id=%s, status=%s)",
+            handling_unit_id, existing_active.id, existing_active.status,
+        )
+        recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
+        recent_replenishments = (
+            db.query(ReplenishmentRequest).order_by(ReplenishmentRequest.created_at.desc()).limit(20).all()
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name="mise_en_stock.html",
+            context={
+                "user_email": current_user.email,
+                "recent": recent,
+                "recent_replenishments": recent_replenishments,
+                "selected_status": "",
+                "statuses": INBOUND_STATUSES,
+                "page": 1,
+                "per_page": 25,
+                "total_pages": 1,
+                "total_count": len(recent),
+                "error": (
+                    f"Ce bac ({handling_unit_id}) a déjà un appel en cours "
+                    f"(statut : {existing_active.status}). Ne pas rappeler en double."
+                ),
+            },
+            status_code=409,
+        )
+
     record_id = str(uuid.uuid4())
 
     movu_payload = {
