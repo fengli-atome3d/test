@@ -1403,7 +1403,10 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
         if movu_order_id:
             inbound_record = db.query(InboundRequest).filter_by(movu_order_id=movu_order_id).first()
             if inbound_record and notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
-                inbound_record.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                new_status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                inbound_record.status = new_status
+                if new_status in ("failed", "cancelled"):
+                    inbound_record.error_message = f"Movu notification: {notification_type}"
                 db.commit()
 
             pack_record = db.query(PreparationRunPack).filter_by(movu_order_id=movu_order_id).first()
@@ -1438,7 +1441,10 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                     replenishment_record.presented_gate_id = payload.get("gateId")
                     db.commit()
                 elif notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
-                    replenishment_record.status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                    new_status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
+                    replenishment_record.status = new_status
+                    if new_status in ("failed", "cancelled"):
+                        replenishment_record.error_message = f"Movu notification: {notification_type}"
                     db.commit()
 
         if notification_type in INBOUND_COMPLETE_NOTIFICATION_TYPES:
