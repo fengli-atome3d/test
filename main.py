@@ -555,8 +555,8 @@ async def mise_en_stock_call_pack(
         requested_by_email=current_user.email,
     )
 
-    if config.DRY_RUN_OUTBOUND:
-        logger.info("[DRY_RUN_OUTBOUND] Would POST replenishment 'Out' order to Movu OPS: %s", movu_payload)
+    if config.DRY_RUN_REPLENISHMENT:
+        logger.info("[DRY_RUN_REPLENISHMENT] Would POST replenishment 'Out' order to Movu OPS: %s", movu_payload)
         record.status = "dry_run"
         record.movu_order_id = movu_payload["id"]
     else:
@@ -873,9 +873,9 @@ async def preparation_trigger_pack(
         "orderLines": [{"handlingUnitId": pack.movu_handling_unit_id}],
     }
 
-    if config.DRY_RUN_OUTBOUND:
+    if config.DRY_RUN_PREPARATION:
         logger.info(
-            "[DRY_RUN_OUTBOUND] Would POST outbound order (released=false) then immediately "
+            "[DRY_RUN_PREPARATION] Would POST outbound order (released=false) then immediately "
             "POST /api/v3/orders/%s/release to Movu OPS: %s",
             movu_order_id, movu_payload,
         )
@@ -943,9 +943,9 @@ async def preparation_confirm_picking(
         preparation_run_id=pack.preparation_run_id, emplacement=pack.emplacement,
     ).all()
 
-    if config.DRY_RUN_OUTBOUND:
+    if config.DRY_RUN_PREPARATION:
         logger.info(
-            "[DRY_RUN_OUTBOUND] Would POST /api/v3/terminals/%s/gate/%s/release for pack %s",
+            "[DRY_RUN_PREPARATION] Would POST /api/v3/terminals/%s/gate/%s/release for pack %s",
             pack.presented_terminal_id, pack.presented_gate_id, pack_id,
         )
         new_status = "dry_run"

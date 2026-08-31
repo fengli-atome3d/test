@@ -98,6 +98,17 @@ DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("1", "true", "yes")
 # the legacy DRY_RUN value unless explicitly overridden.
 DRY_RUN_INBOUND = os.getenv("DRY_RUN_INBOUND", str(DRY_RUN)).lower() in ("1", "true", "yes")
 DRY_RUN_OUTBOUND = os.getenv("DRY_RUN_OUTBOUND", str(DRY_RUN)).lower() in ("1", "true", "yes")
+
+# Split further Aug 31 — DRY_RUN_OUTBOUND used to cover BOTH the Out
+# (replenishment/"Appeler un bac") and Cycle (preparation-run) missions
+# together, meaning testing one accidentally exposed the other too.
+# Three distinct mission types exist:
+#   1. In  (mise-en-stock)         -> DRY_RUN_INBOUND
+#   2. Out (Appeler un bac)        -> DRY_RUN_REPLENISHMENT
+#   3. Cycle (preparation-run)     -> DRY_RUN_PREPARATION
+# Both default to the legacy DRY_RUN_OUTBOUND value for safety if unset.
+DRY_RUN_REPLENISHMENT = os.getenv("DRY_RUN_REPLENISHMENT", str(DRY_RUN_OUTBOUND)).lower() in ("1", "true", "yes")
+DRY_RUN_PREPARATION = os.getenv("DRY_RUN_PREPARATION", str(DRY_RUN_OUTBOUND)).lower() in ("1", "true", "yes")
 DRY_RUN_ORDERS = os.getenv("DRY_RUN_ORDERS", str(DRY_RUN)).lower() in ("1", "true", "yes")
 
 # --- Stale inbound mission detection ------------------------------------
