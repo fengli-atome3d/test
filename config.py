@@ -122,3 +122,15 @@ MIDDLEWARE_DB_URL = os.getenv(
 # flow exists anywhere — accounts only created via create_user.py on
 # VM101. Generate with `openssl rand -base64 32`.
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "")
+
+# --- Reversible password encryption (admin viewing only) ------------------
+# Login itself still uses one-way bcrypt hashing (unaffected) — this
+# SEPARATE key encrypts a second copy of the password specifically so
+# the admin user-management page can display it later. Explicit,
+# deliberate tradeoff (confirmed despite the security warning) — never
+# used for actual authentication. Generate with:
+#   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+PASSWORD_ENCRYPTION_KEY = os.getenv("PASSWORD_ENCRYPTION_KEY", "")
+
+# Only this exact account can reach the user-management admin page.
+ADMIN_EMAIL = "feng.li@atome3d.com"

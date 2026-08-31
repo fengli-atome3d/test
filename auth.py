@@ -42,6 +42,19 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
     return pwd_context.verify(plain_password, password_hash)
 
 
+def encrypt_password(plain_password: str) -> str:
+    """Reversible encryption for admin-page display — NEVER used for login verification."""
+    from cryptography.fernet import Fernet
+    f = Fernet(config.PASSWORD_ENCRYPTION_KEY.encode())
+    return f.encrypt(plain_password.encode()).decode()
+
+
+def decrypt_password(encrypted_password: str) -> str:
+    from cryptography.fernet import Fernet
+    f = Fernet(config.PASSWORD_ENCRYPTION_KEY.encode())
+    return f.decrypt(encrypted_password.encode()).decode()
+
+
 def create_session_token(user_id: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=SESSION_EXPIRE_HOURS)
     payload = {"sub": user_id, "exp": expire}
@@ -78,3 +91,15 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise NotAuthenticatedException("Account not found or disabled")
 
     return user
+
+
+def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    """
+    FastAPI dependency for the admin user-management page — ONLY this
+    exact hardcoded email may reach it, regardless of any 'role' field
+    stored on the account. Deliberately simple/explicit rather than a
+    general role-based check, per direct instruction.
+    """
+    if current_user.email != config.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Accès réservé à l'administrateur")
+    return current_user

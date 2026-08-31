@@ -18,6 +18,7 @@ default "public" schema, full control.
 import uuid
 
 from sqlalchemy import Column, String, DateTime, Integer, Boolean, JSON, func
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from database import Base
 
@@ -164,10 +165,9 @@ class PreparationRunPack(Base):
 class User(Base):
     """
     Internal-only accounts for the logistics interface. NO self-service
-    signup exists anywhere in this codebase, intentionally — accounts are
-    only ever created by running create_user.py directly on VM101. This
-    matches the requirement: internal tool, no one outside the team can
-    ever create their own login.
+    signup exists anywhere in this codebase — accounts are managed via
+    the admin page (/admin/users, feng.li@atome3d.com only) or, as a
+    fallback, create_user.py directly on VM101.
     """
     __tablename__ = "users"
 
@@ -175,12 +175,23 @@ class User(Base):
     email = Column(String, nullable=False, unique=True, index=True)
     password_hash = Column(String, nullable=False)
 
-    # Terminal identity, for accounts dedicated to a specific physical
-    # station PC (e.g. "MPS1", "MPS2", "MPS3"). NULL for office/admin
-    # accounts. Used by the preparation trigger and replenishment
-    # actions instead of asking the colleague to select/scan terminal
-    # every time — the logged-in account IS the terminal.
-    terminal = Column(String, nullable=True)
+    # SEPARATE reversibly-encrypted copy of the password, for the admin
+    # page's "view password" feature ONLY — never used for login
+    # verification (that's password_hash, one-way bcrypt, above).
+    # Deliberate, explicitly-confirmed tradeoff despite the security
+    # risk this carries if the encryption key is ever compromised.
+    encrypted_password = Column(String, nullable=True)
+
+    # Which physical terminal(s) this account can act as. Stored as a
+    # real Postgres array — most accounts have exactly ONE entry (a
+    # dedicated terminal PC login), admin/office accounts may have
+    # several or none. Triggering a Cycle order requires EXACTLY one
+    # entry (unambiguous); accounts with 0 or 2+ are blocked from
+    # triggering with a clear error, directing them to a dedicated
+    # single-terminal account instead.
+    access_terminals = Column(ARRAY(String), nullable=False, default=list)
+
+    role = Column(String, default="user", nullable=False)  # "user" | "admin"
 
     # Lets an account be disabled without deleting it (keeps history/audit
     # trail intact if someone leaves the team).

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin — Utilisateurs</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; margin: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        h1 { font-size: 1.25rem; margin: 0; color: #18181b; }
+        .user-info { font-size: 0.85rem; color: #71717a; }
+        .warning-banner { background: #fef3c7; color: #92400e; padding: 0.75rem 1rem; border-radius: 8px;
+                           font-size: 0.85rem; margin-bottom: 1.5rem; }
+        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+                margin-bottom: 1.5rem; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px;
+                overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        th { text-align: left; padding: 0.75rem 1rem; background: #fafafa; font-size: 0.8rem;
+             color: #52525b; border-bottom: 1px solid #e4e4e7; text-transform: uppercase; }
+        td { padding: 0.6rem 1rem; border-bottom: 1px solid #f4f4f5; font-size: 0.85rem; color: #27272a;
+             vertical-align: top; }
+        tr:last-child td { border-bottom: none; }
+        code { background: #f4f4f5; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.8rem; }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+        .badge-admin { background: #ede9fe; color: #5b21b6; }
+        .badge-user { background: #f4f4f5; color: #52525b; }
+        .badge-inactive { background: #fee2e2; color: #991b1b; }
+        .badge-active { background: #d1fae5; color: #065f46; }
+        label { display: block; font-size: 0.8rem; color: #52525b; margin-bottom: 0.3rem; margin-top: 0.75rem; }
+        input[type="email"], input[type="text"], input[type="password"], select {
+            padding: 0.5rem 0.7rem; border: 1px solid #d4d4d8; border-radius: 6px; font-size: 0.9rem;
+            width: 100%; box-sizing: border-box;
+        }
+        .checkbox-row { display: flex; gap: 1rem; margin-top: 0.4rem; }
+        .checkbox-row label { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; margin: 0; }
+        .checkbox-row input { width: auto; }
+        button { padding: 0.5rem 1rem; background: #18181b; color: white; border: none;
+                 border-radius: 6px; font-size: 0.85rem; cursor: pointer; margin-top: 1rem; }
+        button:hover { background: #27272a; }
+        .edit-form { display: none; margin-top: 0.5rem; padding: 0.75rem; background: #fafafa; border-radius: 6px; }
+        .edit-toggle { background: white; color: #18181b; border: 1px solid #d4d4d8; font-size: 0.75rem;
+                        padding: 0.3rem 0.6rem; margin: 0; }
+        .edit-toggle:hover { background: #f4f4f5; }
+        .password-cell { font-family: monospace; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Administration — Utilisateurs</h1>
+        <div class="user-info">
+            <a href="/preparation" style="color:#71717a; margin-right:0.75rem;">Préparation</a>
+            <a href="/mise-en-stock" style="color:#71717a; margin-right:0.75rem;">Mise en stock</a>
+            {{ user_email }} <a href="/logout">Déconnexion</a>
+        </div>
+    </header>
+
+    <div class="warning-banner">
+        ⚠️ Cette page affiche les mots de passe en clair (choix explicitement confirmé, contrairement à la pratique de sécurité recommandée). Accès strictement réservé à {{ user_email }}.
+    </div>
+
+    <div class="card">
+        <h2 style="font-size: 1rem; margin-top: 0;">Créer un utilisateur</h2>
+        <form method="post" action="/admin/users">
+            <label for="new-email">Email</label>
+            <input type="email" id="new-email" name="email" required placeholder="MPS1@atome3d.com">
+
+            <label for="new-password">Mot de passe (12+ caractères)</label>
+            <input type="text" id="new-password" name="password" required minlength="12">
+
+            <label for="new-role">Rôle</label>
+            <select id="new-role" name="role">
+                <option value="user">user</option>
+                <option value="admin">admin</option>
+            </select>
+
+            <label>Terminaux accessibles</label>
+            <div class="checkbox-row">
+                {% for t in valid_terminals %}
+                <label><input type="checkbox" name="access_terminals" value="{{ t }}"> {{ t }}</label>
+                {% endfor %}
+            </div>
+
+            <button type="submit">Créer</button>
+        </form>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Email</th>
+                <th>Mot de passe</th>
+                <th>Rôle</th>
+                <th>Terminaux</th>
+                <th>Statut</th>
+                <th>Créé le</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in display_users %}
+            <tr>
+                <td>{{ d.user.email }}</td>
+                <td class="password-cell">{{ d.plain_password or '—' }}</td>
+                <td><span class="badge {% if d.user.role == 'admin' %}badge-admin{% else %}badge-user{% endif %}">{{ d.user.role }}</span></td>
+                <td>{{ d.user.access_terminals | join(', ') if d.user.access_terminals else '—' }}</td>
+                <td><span class="badge {% if d.user.is_active %}badge-active{% else %}badge-inactive{% endif %}">{% if d.user.is_active %}actif{% else %}désactivé{% endif %}</span></td>
+                <td>{{ d.user.created_at | paris_time }}</td>
+                <td>
+                    <button type="button" class="edit-toggle" onclick="document.getElementById('edit-{{ d.user.id }}').style.display = document.getElementById('edit-{{ d.user.id }}').style.display === 'block' ? 'none' : 'block';">Modifier</button>
+                    <div class="edit-form" id="edit-{{ d.user.id }}">
+                        <form method="post" action="/admin/users/{{ d.user.id }}/edit">
+                            <label>Rôle</label>
+                            <select name="role">
+                                <option value="user" {% if d.user.role == 'user' %}selected{% endif %}>user</option>
+                                <option value="admin" {% if d.user.role == 'admin' %}selected{% endif %}>admin</option>
+                            </select>
+                            <label>Terminaux</label>
+                            <div class="checkbox-row">
+                                {% for t in valid_terminals %}
+                                <label><input type="checkbox" name="access_terminals" value="{{ t }}" {% if t in d.user.access_terminals %}checked{% endif %}> {{ t }}</label>
+                                {% endfor %}
+                            </div>
+                            <div class="checkbox-row">
+                                <label><input type="checkbox" name="is_active" value="true" {% if d.user.is_active %}checked{% endif %}> Compte actif</label>
+                            </div>
+                            <button type="submit">Enregistrer</button>
+                        </form>
+                        <form method="post" action="/admin/users/{{ d.user.id }}/reset-password" style="margin-top: 0.75rem; border-top: 1px solid #e4e4e7; padding-top: 0.75rem;">
+                            <label>Nouveau mot de passe</label>
+                            <input type="text" name="password" minlength="12" required>
+                            <button type="submit">Réinitialiser le mot de passe</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

@@ -19,7 +19,8 @@ from database import get_db
 from db_models import OrderMapping, WebhookLog, User, PreparationRun, PreparationRunPack, InboundRequest, ReplenishmentRequest
 from auth import (
     hash_password, verify_password, create_session_token, get_current_user,
-    SESSION_COOKIE_NAME, NotAuthenticatedException,
+    SESSION_COOKIE_NAME, NotAuthenticatedException, get_admin_user,
+    encrypt_password, decrypt_password,
 )
 
 from fastapi.templating import Jinja2Templates
@@ -162,6 +163,108 @@ def logout():
     response = RedirectResponse(url="/login", status_code=303)
     response.delete_cookie(SESSION_COOKIE_NAME)
     return response
+
+
+VALID_TERMINAL_VALUES = ["MPS1", "MPS2", "MPS3"]
+
+
+@app.get("/admin/users")
+def admin_users_list(
+    request: Request,
+    admin_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    # Decrypt for display — failures (e.g. missing/rotated key) shown
+    # as a placeholder rather than crashing the whole page.
+    display_users = []
+    for u in users:
+        plain_password = None
+        if u.encrypted_password:
+            try:
+                plain_password = decrypt_password(u.encrypted_password)
+            except Exception as e:
+                logger.error("Failed to decrypt password for user %s: %s", u.email, e)
+                plain_password = "(erreur de déchiffrement)"
+        display_users.append({"user": u, "plain_password": plain_password})
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_users.html",
+        context={
+            "user_email": admin_user.email,
+            "display_users": display_users,
+            "valid_terminals": VALID_TERMINAL_VALUES,
+            "error": None,
+        },
+    )
+
+
+@app.post("/admin/users")
+async def admin_users_create(
+    request: Request,
+    admin_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    email: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("user"),
+    access_terminals: list[str] = Form([]),
+):
+    email = email.strip().lower()
+    if db.query(User).filter_by(email=email).first():
+        raise HTTPException(status_code=400, detail=f"Un compte avec l'email {email} existe déjà")
+    if len(password) < 12:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 12 caractères")
+
+    new_user = User(
+        email=email,
+        password_hash=hash_password(password),
+        encrypted_password=encrypt_password(password),
+        role=role if role in ("user", "admin") else "user",
+        access_terminals=[t for t in access_terminals if t in VALID_TERMINAL_VALUES],
+    )
+    db.add(new_user)
+    db.commit()
+    return RedirectResponse(url="/admin/users", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/edit")
+async def admin_users_edit(
+    user_id: str,
+    admin_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    role: str = Form("user"),
+    access_terminals: list[str] = Form([]),
+    is_active: bool = Form(False),
+):
+    target = db.query(User).filter_by(id=user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target.role = role if role in ("user", "admin") else "user"
+    target.access_terminals = [t for t in access_terminals if t in VALID_TERMINAL_VALUES]
+    target.is_active = is_active
+    db.commit()
+    return RedirectResponse(url="/admin/users", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/reset-password")
+async def admin_users_reset_password(
+    user_id: str,
+    admin_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    password: str = Form(...),
+):
+    target = db.query(User).filter_by(id=user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if len(password) < 12:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 12 caractères")
+
+    target.password_hash = hash_password(password)
+    target.encrypted_password = encrypt_password(password)
+    db.commit()
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.get("/mise-en-stock")
@@ -700,16 +803,21 @@ async def preparation_trigger_pack(
     an immediate follow-up call to /release is required — combined into
     this single button click.
     """
-    terminal = (current_user.terminal or "").strip().upper()
-    if terminal not in {"MPS1", "MPS2", "MPS3"}:
+    valid_terminals = [t for t in (current_user.access_terminals or []) if t in {"MPS1", "MPS2", "MPS3"}]
+    if len(valid_terminals) != 1:
         logger.warning(
-            "Rejected outbound trigger: user %s has no valid terminal set (got '%s')",
-            current_user.email, terminal,
+            "Rejected outbound trigger: user %s has %d valid terminal(s) in access_terminals (%s) — need exactly 1",
+            current_user.email, len(valid_terminals), current_user.access_terminals,
         )
         raise HTTPException(
             status_code=400,
-            detail="Votre compte n'est associé à aucun terminal valide (MPS1/MPS2/MPS3) — contactez un administrateur.",
+            detail=(
+                "Votre compte doit avoir accès à EXACTEMENT un terminal pour déclencher une mission "
+                "(actuellement : " + (", ".join(current_user.access_terminals or []) or "aucun") + "). "
+                "Utilisez un compte dédié à un seul terminal, ou contactez un administrateur."
+            ),
         )
+    terminal = valid_terminals[0]
 
     pack = db.query(PreparationRunPack).filter_by(id=pack_id).first()
     if not pack:
