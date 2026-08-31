@@ -267,51 +267,100 @@ async def admin_users_reset_password(
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
+def get_mise_en_stock_items(db: Session, status: str = "", mission_type: str = "", page: int = 1, per_page: int = 25):
+    """
+    Shared helper — combines InboundRequest (In) and ReplenishmentRequest
+    (Out) into one normalized, sorted, paginated list. Used by the main
+    page AND by every error-response path that re-renders the page
+    (gate validation, duplicate-submission guards) so all 5 render
+    sites stay consistent instead of duplicating this logic.
+    """
+    if per_page not in (25, 50, 100):
+        per_page = 25
+    page = max(1, page)
+
+    inbound_query = db.query(InboundRequest)
+    replenishment_query = db.query(ReplenishmentRequest)
+    if status:
+        inbound_query = inbound_query.filter(InboundRequest.status == status)
+        replenishment_query = replenishment_query.filter(ReplenishmentRequest.status == status)
+
+    combined = []
+
+    if mission_type != "Out":
+        for r in inbound_query.order_by(InboundRequest.created_at.desc()).limit(200).all():
+            combined.append({
+                "type": "In",
+                "id": r.id,
+                "handling_unit_id": r.handling_unit_id,
+                "location_info": r.gate or "—",
+                "status": r.status,
+                "movu_order_id": r.movu_order_id,
+                "error_message": r.error_message,
+                "requested_by_email": r.requested_by_email,
+                "created_at": r.created_at,
+                "can_cancel": r.status in ("requested", "sent", "in_progress", "dry_run"),
+                "cancel_url": f"/mise-en-stock/{r.id}/cancel",
+                "can_delete": not r.movu_order_id,
+                "delete_url": f"/mise-en-stock/{r.id}/delete",
+            })
+
+    if mission_type != "In":
+        for r in replenishment_query.order_by(ReplenishmentRequest.created_at.desc()).limit(200).all():
+            location = f"{r.presented_terminal_id} / {r.presented_gate_id}" if r.presented_terminal_id else "—"
+            combined.append({
+                "type": "Out",
+                "id": r.id,
+                "handling_unit_id": r.handling_unit_id,
+                "location_info": location,
+                "status": r.status,
+                "movu_order_id": r.movu_order_id,
+                "error_message": r.error_message,
+                "requested_by_email": r.requested_by_email,
+                "created_at": r.created_at,
+                "can_cancel": False,
+                "cancel_url": None,
+                "can_delete": not r.movu_order_id,
+                "delete_url": f"/mise-en-stock/replenishment/{r.id}/delete",
+            })
+
+    combined.sort(key=lambda x: x["created_at"], reverse=True)
+
+    total_count = len(combined)
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    page_items = combined[(page - 1) * per_page: page * per_page]
+
+    return page_items, total_count, total_pages, page, per_page
+
+
 @app.get("/mise-en-stock")
 def mise_en_stock_page(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     status: str = "",
+    mission_type: str = "",
     page: int = 1,
     per_page: int = 25,
 ):
-    if per_page not in (25, 50, 100):
-        per_page = 25
-    page = max(1, page)
-
-    query = db.query(InboundRequest)
-    if status:
-        query = query.filter(InboundRequest.status == status)
-
-    total_count = query.count()
-    total_pages = max(1, (total_count + per_page - 1) // per_page)
-    page = min(page, total_pages)
-
-    recent = (
-        query.order_by(InboundRequest.created_at.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
+    page_items, total_count, total_pages, page, per_page = get_mise_en_stock_items(
+        db, status=status, mission_type=mission_type, page=page, per_page=per_page
     )
-
-    recent_replenishments = (
-        db.query(ReplenishmentRequest).order_by(ReplenishmentRequest.created_at.desc()).limit(20).all()
-    )
-
     return templates.TemplateResponse(
         request=request,
         name="mise_en_stock.html",
         context={
             "user_email": current_user.email,
-            "recent": recent,
-            "recent_replenishments": recent_replenishments,
+            "items": page_items,
             "selected_status": status,
+            "selected_type": mission_type,
             "statuses": INBOUND_STATUSES,
             "page": page,
             "per_page": per_page,
             "total_pages": total_pages,
             "total_count": total_count,
+            "error": None,
         },
     )
 
@@ -347,19 +396,20 @@ async def mise_en_stock_scan(
             "Rejected mise-en-stock scan: user %s has no MPS3 access (access_terminals=%s)",
             current_user.email, current_user.access_terminals,
         )
-        recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
+        page_items, total_count, total_pages, _, _ = get_mise_en_stock_items(db)
         return templates.TemplateResponse(
             request=request,
             name="mise_en_stock.html",
             context={
                 "user_email": current_user.email,
-                "recent": recent,
+                "items": page_items,
                 "selected_status": "",
+                "selected_type": "",
                 "statuses": INBOUND_STATUSES,
                 "page": 1,
                 "per_page": 25,
-                "total_pages": 1,
-                "total_count": len(recent),
+                "total_pages": total_pages,
+                "total_count": total_count,
                 "error": "Votre compte n'est pas autorisé à faire de la mise en stock (accès MPS3 requis).",
             },
             status_code=403,
@@ -367,7 +417,6 @@ async def mise_en_stock_scan(
 
     if gate not in VALID_INBOUND_GATES:
         logger.warning("Rejected mise-en-stock scan: invalid/unsupported gate '%s'", gate)
-        recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
         if gate.startswith("MPS1") or gate.startswith("MPS2"):
             error_msg = (
                 f"Ce portail ({gate}) ne peut pas traiter la mise en stock. "
@@ -375,18 +424,20 @@ async def mise_en_stock_scan(
             )
         else:
             error_msg = f"Gate scanné invalide : '{gate}'. Attendu : MPS3G1, MPS3G2 ou MPS3G3."
+        page_items, total_count, total_pages, _, _ = get_mise_en_stock_items(db)
         return templates.TemplateResponse(
             request=request,
             name="mise_en_stock.html",
             context={
                 "user_email": current_user.email,
-                "recent": recent,
+                "items": page_items,
                 "selected_status": "",
+                "selected_type": "",
                 "statuses": INBOUND_STATUSES,
                 "page": 1,
                 "per_page": 25,
-                "total_pages": 1,
-                "total_count": len(recent),
+                "total_pages": total_pages,
+                "total_count": total_count,
                 "error": error_msg,
             },
             status_code=400,
@@ -414,19 +465,20 @@ async def mise_en_stock_scan(
             "Rejected mise-en-stock scan: pack %s already has an active request (id=%s, status=%s, created=%s)",
             handling_unit_id, existing_active.id, existing_active.status, existing_active.created_at,
         )
-        recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
+        page_items, total_count, total_pages, _, _ = get_mise_en_stock_items(db)
         return templates.TemplateResponse(
             request=request,
             name="mise_en_stock.html",
             context={
                 "user_email": current_user.email,
-                "recent": recent,
+                "items": page_items,
                 "selected_status": "",
+                "selected_type": "",
                 "statuses": INBOUND_STATUSES,
                 "page": 1,
                 "per_page": 25,
-                "total_pages": 1,
-                "total_count": len(recent),
+                "total_pages": total_pages,
+                "total_count": total_count,
                 "error": (
                     f"Ce bac ({handling_unit_id}) a déjà une demande en cours "
                     f"(statut : {existing_active.status}, créée {existing_active.created_at.strftime('%H:%M')}). "
@@ -649,23 +701,20 @@ async def mise_en_stock_call_pack(
             "Rejected replenishment call: pack %s already has an active request (id=%s, status=%s)",
             handling_unit_id, existing_active.id, existing_active.status,
         )
-        recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
-        recent_replenishments = (
-            db.query(ReplenishmentRequest).order_by(ReplenishmentRequest.created_at.desc()).limit(20).all()
-        )
+        page_items, total_count, total_pages, _, _ = get_mise_en_stock_items(db)
         return templates.TemplateResponse(
             request=request,
             name="mise_en_stock.html",
             context={
                 "user_email": current_user.email,
-                "recent": recent,
-                "recent_replenishments": recent_replenishments,
+                "items": page_items,
                 "selected_status": "",
+                "selected_type": "",
                 "statuses": INBOUND_STATUSES,
                 "page": 1,
                 "per_page": 25,
-                "total_pages": 1,
-                "total_count": len(recent),
+                "total_pages": total_pages,
+                "total_count": total_count,
                 "error": (
                     f"Ce bac ({handling_unit_id}) a déjà un appel en cours "
                     f"(statut : {existing_active.status}). Ne pas rappeler en double."

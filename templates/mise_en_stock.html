@@ -43,6 +43,9 @@
         .badge-inprogress { background: #dbeafe; color: #1e40af; }
         .badge-cancelled { background: #f4f4f5; color: #52525b; }
         .badge-sent { background: #ede9fe; color: #5b21b6; }
+        .badge-presented { background: #fed7aa; color: #9a3412; }
+        .badge-type-in { background: #dcfce7; color: #166534; }
+        .badge-type-out { background: #fef9c3; color: #854d0e; }
         .filters { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
         .filters select { padding: 0.5rem 0.75rem; border: 1px solid #d4d4d8; border-radius: 6px; font-size: 0.85rem; }
         .filters button { padding: 0.5rem 1rem; background: #18181b; color: white; border: none;
@@ -102,6 +105,11 @@
     <h2 style="font-size: 1rem; color: #52525b;">Dernières demandes</h2>
 
     <form method="get" action="/mise-en-stock" class="filters">
+        <select name="mission_type">
+            <option value="">Tous types (In + Out)</option>
+            <option value="In" {% if selected_type == 'In' %}selected{% endif %}>In (mise en stock)</option>
+            <option value="Out" {% if selected_type == 'Out' %}selected{% endif %}>Out (appeler un bac)</option>
+        </select>
         <select name="status">
             <option value="">Tous les statuts</option>
             {% for s in statuses %}
@@ -114,17 +122,18 @@
             <option value="100" {% if per_page == 100 %}selected{% endif %}>100 / page</option>
         </select>
         <button type="submit">Filtrer</button>
-        {% if selected_status %}
+        {% if selected_status or selected_type %}
         <a href="/mise-en-stock" class="reset-link">Réinitialiser</a>
         {% endif %}
     </form>
 
-    {% if recent %}
+    {% if items %}
     <table>
         <thead>
             <tr>
+                <th>Type</th>
                 <th>Bac (Handling Unit)</th>
-                <th>Gate</th>
+                <th>Gate / Terminal</th>
                 <th>Statut</th>
                 <th>Ordre Movu</th>
                 <th>Par</th>
@@ -133,12 +142,14 @@
             </tr>
         </thead>
         <tbody>
-            {% for r in recent %}
+            {% for r in items %}
             <tr>
+                <td><span class="badge {% if r.type == 'In' %}badge-type-in{% else %}badge-type-out{% endif %}">{{ r.type }}</span></td>
                 <td>{{ r.handling_unit_id }}</td>
-                <td>{{ r.gate or '—' }}</td>
+                <td>{{ r.location_info }}</td>
                 <td>
                     {% if r.status == 'completed' %}<span class="badge badge-success">Terminé</span>
+                    {% elif r.status == 'presented' %}<span class="badge badge-presented">Présenté</span>
                     {% elif r.status == 'in_progress' %}<span class="badge badge-inprogress">En cours</span>
                     {% elif r.status == 'failed' %}<span class="badge badge-failed">Échec</span>
                     {% elif r.status == 'cancelled' %}<span class="badge badge-cancelled">Annulé</span>
@@ -152,12 +163,12 @@
                 <td>{{ r.requested_by_email or '—' }}</td>
                 <td>{{ r.created_at | paris_time }}</td>
                 <td>
-                    {% if r.status in ['requested', 'sent', 'in_progress', 'dry_run'] %}
-                    <form method="post" action="/mise-en-stock/{{ r.id }}/cancel" style="margin:0;">
+                    {% if r.can_cancel %}
+                    <form method="post" action="{{ r.cancel_url }}" style="margin:0;">
                         <button type="submit" class="cancel-btn" onclick="return confirm('Annuler cette mission ?');">Annuler</button>
                     </form>
-                    {% elif not r.movu_order_id %}
-                    <form method="post" action="/mise-en-stock/{{ r.id }}/delete" style="margin:0;">
+                    {% elif r.can_delete %}
+                    <form method="post" action="{{ r.delete_url }}" style="margin:0;">
                         <button type="submit" class="cancel-btn" onclick="return confirm('Supprimer cette entrée ? Aucun ordre Movu associé.');">Supprimer</button>
                     </form>
                     {% endif %}
@@ -173,58 +184,13 @@
     {% if total_pages > 1 %}
     <div class="pagination">
         {% if page > 1 %}
-        <a href="/mise-en-stock?status={{ selected_status }}&per_page={{ per_page }}&page={{ page - 1 }}">← Précédent</a>
+        <a href="/mise-en-stock?status={{ selected_status }}&mission_type={{ selected_type }}&per_page={{ per_page }}&page={{ page - 1 }}">← Précédent</a>
         {% endif %}
         <span>Page {{ page }} / {{ total_pages }} ({{ total_count }} au total)</span>
         {% if page < total_pages %}
-        <a href="/mise-en-stock?status={{ selected_status }}&per_page={{ per_page }}&page={{ page + 1 }}">Suivant →</a>
+        <a href="/mise-en-stock?status={{ selected_status }}&mission_type={{ selected_type }}&per_page={{ per_page }}&page={{ page + 1 }}">Suivant →</a>
         {% endif %}
     </div>
-    {% endif %}
-
-    <h2 style="font-size: 1rem; color: #52525b; margin-top: 2rem;">Réapprovisionnements en cours</h2>
-    {% if recent_replenishments %}
-    <table>
-        <thead>
-            <tr>
-                <th>Bac (Handling Unit)</th>
-                <th>Statut</th>
-                <th>Terminal / Gate</th>
-                <th>Par</th>
-                <th>Quand</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for r in recent_replenishments %}
-            <tr>
-                <td>{{ r.handling_unit_id }}</td>
-                <td>
-                    {% if r.status == 'presented' %}<span class="badge badge-presented">Présenté — allez chercher</span>
-                    {% elif r.status == 'failed' %}<span class="badge badge-failed">Échec</span>
-                    {% elif r.status == 'dry_run' %}<span class="badge badge-dryrun">Test (DRY_RUN)</span>
-                    {% elif r.status == 'sent' %}<span class="badge badge-sent">Appelé</span>
-                    {% elif r.status == 'in_progress' %}<span class="badge badge-inprogress">En route</span>
-                    {% else %}<span class="badge badge-requested">Demandé</span>
-                    {% endif %}
-                    {% if r.error_message %}<div style="font-size: 0.75rem; color: #991b1b; margin-top: 0.25rem;">{{ r.error_message }}</div>{% endif %}
-                </td>
-                <td>{% if r.presented_terminal_id %}{{ r.presented_terminal_id }} / {{ r.presented_gate_id }}{% else %}—{% endif %}</td>
-                <td>{{ r.requested_by_email or '—' }}</td>
-                <td>{{ r.created_at | paris_time }}</td>
-                <td>
-                    {% if not r.movu_order_id %}
-                    <form method="post" action="/mise-en-stock/replenishment/{{ r.id }}/delete" style="margin:0;">
-                        <button type="submit" class="cancel-btn" onclick="return confirm('Supprimer cette entrée ? Aucun ordre Movu associé.');">Supprimer</button>
-                    </form>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p style="color: #a1a1aa;">Aucun réapprovisionnement pour l'instant.</p>
     {% endif %}
 
     <script>
