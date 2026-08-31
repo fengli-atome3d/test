@@ -296,6 +296,20 @@
                     resultsBox.style.display = 'none';
                 }
             });
+
+            // Explicit, impossible-to-miss validation — the native
+            // browser "required" tooltip is easy to miss in a fast
+            // scanning workflow. Confirmed real issue Aug 31: a
+            // colleague clicked "Appeler ce bac" with an empty field,
+            // the browser silently blocked it (zero network request,
+            // no visible error), looking like a broken button.
+            document.getElementById('call-pack-form').addEventListener('submit', (e) => {
+                if (!searchInput.value.trim()) {
+                    e.preventDefault();
+                    alert('Tapez ou sélectionnez d\'abord un ID de bac avant d\'appeler.');
+                    searchInput.focus();
+                }
+            });
         });
     </script>
 </body>
