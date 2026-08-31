@@ -337,6 +337,34 @@ async def mise_en_stock_scan(
     handling_unit_id = handling_unit_id.strip()
     gate = gate.strip().upper()
 
+    # Account-level check FIRST — a user account without MPS3 in its
+    # access_terminals can't do inbound at all, regardless of what gate
+    # value they scan/type. This closes a real gap: previously, only
+    # the scanned gate value was checked, meaning any logged-in account
+    # could still attempt inbound just by knowing/typing "MPS3G1".
+    if "MPS3" not in (current_user.access_terminals or []):
+        logger.warning(
+            "Rejected mise-en-stock scan: user %s has no MPS3 access (access_terminals=%s)",
+            current_user.email, current_user.access_terminals,
+        )
+        recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
+        return templates.TemplateResponse(
+            request=request,
+            name="mise_en_stock.html",
+            context={
+                "user_email": current_user.email,
+                "recent": recent,
+                "selected_status": "",
+                "statuses": INBOUND_STATUSES,
+                "page": 1,
+                "per_page": 25,
+                "total_pages": 1,
+                "total_count": len(recent),
+                "error": "Votre compte n'est pas autorisé à faire de la mise en stock (accès MPS3 requis).",
+            },
+            status_code=403,
+        )
+
     if gate not in VALID_INBOUND_GATES:
         logger.warning("Rejected mise-en-stock scan: invalid/unsupported gate '%s'", gate)
         recent = db.query(InboundRequest).order_by(InboundRequest.created_at.desc()).limit(25).all()
