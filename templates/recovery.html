@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Atome3D Logistique — Récupération</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; background: #f4f4f5; margin: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        h1 { font-size: 1.25rem; margin: 0; color: #18181b; }
+        .user-info { font-size: 0.85rem; color: #71717a; }
+        .user-info a { text-decoration: none; }
+        .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; }
+        .nav-link:hover { color: #18181b; }
+        .nav-active { color: #18181b; font-weight: 600; }
+
+        .intro { background: white; padding: 1.25rem 1.5rem; border-radius: 8px;
+                  box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 1.5rem; font-size: 0.85rem; color: #52525b; }
+        .intro ol { margin: 0.5rem 0 0 1.1rem; padding: 0; }
+        .intro li { margin-bottom: 0.3rem; }
+
+        h2 { font-size: 1rem; color: #52525b; margin: 1.5rem 0 0.75rem; }
+
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px;
+                overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        th { text-align: left; padding: 0.75rem 1rem; background: #fafafa; font-size: 0.8rem;
+             color: #52525b; border-bottom: 1px solid #e4e4e7; text-transform: uppercase; }
+        td { padding: 0.75rem 1rem; border-bottom: 1px solid #f4f4f5; font-size: 0.9rem; color: #27272a; vertical-align: top; }
+        tr:last-child td { border-bottom: none; }
+
+        .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 500; }
+        .badge-failed { background: #fee2e2; color: #991b1b; }
+        .badge-aborted { background: #fecaca; color: #7f1d1d; }
+        .badge-type-in { background: #dcfce7; color: #166534; }
+        .badge-type-out { background: #fef9c3; color: #854d0e; }
+
+        .empty-state { background: white; padding: 2rem; border-radius: 8px; text-align: center;
+                        color: #71717a; font-size: 0.9rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+
+        .confirm-btn { padding: 0.5rem 1rem; background: #18181b; color: white; border: none;
+                border-radius: 6px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+        .confirm-btn:hover { background: #27272a; }
+
+        .hu-id { font-family: monospace; font-size: 0.85rem; }
+        .error-msg { font-size: 0.8rem; color: #b91c1c; margin-top: 0.25rem; max-width: 360px; }
+        .check-link { font-size: 0.75rem; color: #71717a; text-decoration: none; }
+        .check-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Récupération — bacs bloqués</h1>
+        <div class="user-info">
+            <a href="/preparation" class="nav-link">Préparation</a>
+            <a href="/mise-en-stock" class="nav-link">Mise en stock</a>
+            <a href="/recovery" class="nav-link nav-active">Récupération</a>
+            <span style="margin: 0 0.75rem; color: #d4d4d8;">|</span>
+            {{ user_email }}
+            <a href="/logout">Déconnexion</a>
+        </div>
+    </header>
+
+    <div class="intro">
+        <strong>Quand utiliser cette page :</strong> un robot reste bloqué avec un bac (panne batterie,
+        Traffic Control, erreur matérielle) — Movu envoie <code>OrderLineErrored</code> mais l'ordre
+        peut quand même s'afficher comme "Finished" côté Movu (bug confirmé).
+        <ol>
+            <li>Un collègue récupère physiquement le bac sur le robot et le remet en charge.</li>
+            <li>Cliquez sur <strong>« Confirmer récupération & débloquer »</strong> ci-dessous — cela
+                appelle l'abort Movu sur l'ordre concerné.</li>
+            <li>Si l'abort réussit : le bac passe en <span class="badge badge-aborted">Aborté</span> et
+                peut être rescanné normalement sur la page Mise en stock.</li>
+            <li>Si l'abort échoue (409) : Movu bloque déjà l'ordre côté serveur — <strong>ne pas
+                rescanner</strong>, remonter à Sam/Movu.</li>
+        </ol>
+    </div>
+
+    <h2>À traiter ({{ needs_action|length }})</h2>
+    {% if needs_action %}
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Bac (Handling Unit)</th>
+                <th>Ordre Movu</th>
+                <th>Erreur</th>
+                <th>Détecté</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in needs_action %}
+            <tr>
+                <td><span class="badge {% if r.type == 'In' %}badge-type-in{% else %}badge-type-out{% endif %}">{{ r.type }}</span></td>
+                <td>
+                    <div class="hu-id">{{ r.handling_unit_id }}</div>
+                    <a class="check-link" href="{{ movu_ops_base_url }}/api/v3/handlingunits/{{ r.handling_unit_id }}" target="_blank" rel="noopener">
+                        vérifier état réel dans Movu →
+                    </a>
+                </td>
+                <td class="hu-id">{{ r.movu_order_id or "—" }}</td>
+                <td>
+                    <span class="badge badge-failed">Échec</span>
+                    {% if r.error_message %}<div class="error-msg">{{ r.error_message }}</div>{% endif %}
+                </td>
+                <td>{{ r.created_at.strftime('%d/%m %H:%M') }}</td>
+                <td>
+                    {% if r.cancel_url %}
+                    <form method="post" action="{{ r.cancel_url }}" style="margin:0;"
+                          onclick="return confirm('Confirmez-vous que le bac {{ r.handling_unit_id }} a été physiquement récupéré du robot ? Ceci va appeler l\'abort Movu.');">
+                        <button type="submit" class="confirm-btn">Confirmer récupération &amp; débloquer</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Aucun bac bloqué à traiter en ce moment.</div>
+    {% endif %}
+
+    <h2>Suspects — bloqués sans erreur explicite ({{ suspects|length }})</h2>
+    <div class="intro" style="margin-bottom: 1rem;">
+        Aucun webhook d'échec reçu, mais la mission dépasse {{ stale_threshold_minutes }} min sans
+        avancer. Pattern confirmé (31 août – 1 sept, véhicules 6/15/21) : Movu peut rester bloqué
+        <strong>sans jamais envoyer <code>OrderLineErrored</code></strong> — seule la vérification
+        directe de l'état réel du bac (lien ci-dessous) révèle le problème.
+    </div>
+    {% if suspects %}
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Bac (Handling Unit)</th>
+                <th>Ordre Movu</th>
+                <th>Statut middleware</th>
+                <th>Depuis</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in suspects %}
+            <tr>
+                <td><span class="badge {% if r.type == 'In' %}badge-type-in{% else %}badge-type-out{% endif %}">{{ r.type }}</span></td>
+                <td>
+                    <div class="hu-id">{{ r.handling_unit_id }}</div>
+                    <a class="check-link" href="{{ movu_ops_base_url }}/api/v3/handlingunits/{{ r.handling_unit_id }}" target="_blank" rel="noopener">
+                        vérifier état réel dans Movu →
+                    </a>
+                </td>
+                <td class="hu-id">{{ r.movu_order_id or "—" }}</td>
+                <td><span class="badge badge-processed">{{ r.status }}</span></td>
+                <td>{{ r.created_at.strftime('%d/%m %H:%M') }}</td>
+                <td>
+                    {% if r.cancel_url %}
+                    <form method="post" action="{{ r.cancel_url }}" style="margin:0;"
+                          onclick="return confirm('Avez-vous confirmé dans Movu que ce bac est réellement bloqué (state=Retrieved, location=null) avant d\'aborter {{ r.handling_unit_id }} ?');">
+                        <button type="submit" class="confirm-btn">Confirmer récupération &amp; débloquer</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Aucune mission suspecte en ce moment.</div>
+    {% endif %}
+
+    <h2>Récemment débloqués (24h)</h2>
+    {% if recently_resolved %}
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Bac (Handling Unit)</th>
+                <th>Ordre Movu</th>
+                <th>Statut</th>
+                <th>Résolu</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in recently_resolved %}
+            <tr>
+                <td><span class="badge {% if r.type == 'In' %}badge-type-in{% else %}badge-type-out{% endif %}">{{ r.type }}</span></td>
+                <td class="hu-id">{{ r.handling_unit_id }}</td>
+                <td class="hu-id">{{ r.movu_order_id or "—" }}</td>
+                <td><span class="badge badge-aborted">Aborté</span></td>
+                <td>{{ r.created_at.strftime('%d/%m %H:%M') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Aucune résolution récente.</div>
+    {% endif %}
+</body>
+</html>

@@ -41,7 +41,9 @@
         .badge-dryrun { background: #e0e7ff; color: #3730a3; }
         .badge-requested { background: #fef3c7; color: #92400e; }
         .badge-inprogress { background: #dbeafe; color: #1e40af; }
+        .badge-processed { background: #e9d5ff; color: #6b21a8; }
         .badge-cancelled { background: #f4f4f5; color: #52525b; }
+        .badge-aborted { background: #fecaca; color: #7f1d1d; }
         .badge-sent { background: #ede9fe; color: #5b21b6; }
         .badge-presented { background: #fed7aa; color: #9a3412; }
         .badge-type-in { background: #dcfce7; color: #166534; }
@@ -64,6 +66,7 @@
         <div class="user-info">
             <a href="/preparation" class="nav-link">Préparation</a>
             <a href="/mise-en-stock" class="nav-link nav-active">Mise en stock</a>
+            <a href="/recovery" class="nav-link">Récupération</a>
             <span style="margin: 0 0.75rem; color: #d4d4d8;">|</span>
             {{ user_email }}
             <a href="/logout">Déconnexion</a>
@@ -151,10 +154,13 @@
                     {% if r.status == 'completed' %}<span class="badge badge-success">Terminé</span>
                     {% elif r.status == 'presented' %}<span class="badge badge-presented">Présenté</span>
                     {% elif r.status == 'in_progress' %}<span class="badge badge-inprogress">En cours</span>
+                    {% elif r.status == 'processed' %}<span class="badge badge-processed">Gate libéré — stockage en cours</span>
                     {% elif r.status == 'failed' %}<span class="badge badge-failed">Échec</span>
                     {% elif r.status == 'cancelled' %}<span class="badge badge-cancelled">Annulé</span>
+                    {% elif r.status == 'aborted' %}<span class="badge badge-aborted">Aborté (récupération manuelle)</span>
                     {% elif r.status == 'dry_run' %}<span class="badge badge-dryrun">Test (DRY_RUN)</span>
                     {% elif r.status == 'sent' %}<span class="badge badge-sent">Envoyé</span>
+                    {% elif r.status == 'returning' %}<span class="badge badge-processed">Retour vers stockage</span>
                     {% else %}<span class="badge badge-requested">Demandé</span>
                     {% endif %}
                     {% if r.error_message %}<div style="font-size: 0.75rem; color: #991b1b; margin-top: 0.25rem;">{{ r.error_message }}</div>{% endif %}

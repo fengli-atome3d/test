@@ -42,7 +42,7 @@ PREPARATION_RUN_STATES = [
 # InboundRequest status lifecycle — "sent" means successfully created in
 # Movu, NOT yet physically complete. Real completion comes from
 # /webhook/movu notifications, updating the same row.
-INBOUND_STATUSES = ["requested", "dry_run", "sent", "in_progress", "completed", "cancelled", "failed"]
+INBOUND_STATUSES = ["requested", "dry_run", "sent", "in_progress", "processed", "completed", "cancelled", "failed", "aborted"]
 
 # Only MPS3 supports inbound (confirmed from Movu's functional docs) —
 # a colleague scanning an MPS1/MPS2 badge by mistake must be rejected
@@ -91,7 +91,7 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_sch
 # separate scheduler needed) — a Grafana alert watches this metric.
 stale_inbound_gauge = Gauge(
     "stale_inbound_requests_total",
-    "InboundRequests stuck at in_progress beyond STALE_INBOUND_THRESHOLD_MINUTES",
+    "InboundRequests stuck at in_progress/processed beyond STALE_INBOUND_THRESHOLD_MINUTES",
 )
 
 
@@ -101,7 +101,7 @@ def _compute_stale_inbound_count():
     try:
         threshold = datetime.now(timezone.utc) - timedelta(minutes=config.STALE_INBOUND_THRESHOLD_MINUTES)
         return db.query(InboundRequest).filter(
-            InboundRequest.status == "in_progress",
+            InboundRequest.status.in_(["in_progress", "processed"]),
             InboundRequest.created_at < threshold,
         ).count()
     finally:
@@ -114,7 +114,14 @@ stale_inbound_gauge.set_function(_compute_stale_inbound_count)
 # being stored" — this is when stock needs syncing to ShippingBo's
 # aggregate MOVU emplacement. Confirmed from the functional design doc's
 # webhook list (section 10, annex 16.3).
-INBOUND_COMPLETE_NOTIFICATION_TYPES = {"HandlingUnitStored", "OrderLineProcessed"}
+#
+# IMPORTANT: OrderLineProcessed does NOT belong here. Confirmed real
+# behavior (Sep 1): "Processed" fires when the robot picks the pack off
+# the gate and leaves — the GATE is freed for reuse at this point, but
+# the robot is still searching for a storage slot and the mission can
+# still error afterward. Only HandlingUnitStored / OrderFinished /
+# OrderLineFinished represent genuine physical storage completion.
+INBOUND_COMPLETE_NOTIFICATION_TYPES = {"HandlingUnitStored", "OrderFinished", "OrderLineFinished"}
 
 
 @app.get("/health")
@@ -299,7 +306,13 @@ def get_mise_en_stock_items(db: Session, status: str = "", mission_type: str = "
                 "error_message": r.error_message,
                 "requested_by_email": r.requested_by_email,
                 "created_at": r.created_at,
-                "can_cancel": r.status in ("requested", "sent", "in_progress", "dry_run"),
+                # "processed" included deliberately: gate released ≠
+                # stored. Robot can still error while finding a slot —
+                # see INBOUND_NOTIFICATION_STATUS_MAP comment.
+                # "failed" included deliberately: a failed
+                # (OrderLineErrored) order still has a live Movu order
+                # that needs aborting — see mise_en_stock_cancel.
+                "can_cancel": r.status in ("requested", "sent", "in_progress", "processed", "dry_run", "failed"),
                 "cancel_url": f"/mise-en-stock/{r.id}/cancel",
                 "can_delete": not r.movu_order_id,
                 "delete_url": f"/mise-en-stock/{r.id}/delete",
@@ -318,8 +331,8 @@ def get_mise_en_stock_items(db: Session, status: str = "", mission_type: str = "
                 "error_message": r.error_message,
                 "requested_by_email": r.requested_by_email,
                 "created_at": r.created_at,
-                "can_cancel": False,
-                "cancel_url": None,
+                "can_cancel": r.status in ("requested", "sent", "in_progress", "processed", "dry_run", "failed", "presented"),
+                "cancel_url": f"/mise-en-stock/replenishment/{r.id}/cancel",
                 "can_delete": not r.movu_order_id,
                 "delete_url": f"/mise-en-stock/replenishment/{r.id}/delete",
             })
@@ -455,7 +468,7 @@ async def mise_en_stock_scan(
         db.query(InboundRequest)
         .filter(
             InboundRequest.handling_unit_id == handling_unit_id,
-            InboundRequest.status.notin_(["failed", "cancelled", "completed"]),
+            InboundRequest.status.notin_(["failed", "cancelled", "completed", "aborted"]),
         )
         .order_by(InboundRequest.created_at.desc())
         .first()
@@ -560,8 +573,15 @@ async def mise_en_stock_cancel(
     if not record:
         raise HTTPException(status_code=404, detail="Inbound request not found")
 
-    if record.status in ("cancelled", "completed", "failed"):
-        # Already in a terminal state, nothing to cancel.
+    if record.status in ("cancelled", "aborted", "completed"):
+        # Already in a genuinely terminal state, nothing to cancel.
+        # NOTE: "failed" is intentionally NOT in this list — a failed
+        # (OrderLineErrored) inbound order still has a live Movu order
+        # holding the handling unit/vehicle, and needs abort called on
+        # it just like any other in-flight order. Treating "failed" as
+        # terminal here used to make this button silently no-op instead
+        # of ever calling Movu's abort endpoint (confirmed bug, Sept 1 —
+        # same signature as the vehicle 6/15/21 deadlocks).
         return RedirectResponse(url="/mise-en-stock", status_code=303)
 
     if record.status == "dry_run":
@@ -573,10 +593,28 @@ async def mise_en_stock_cancel(
             try:
                 resp = await client.post(url, headers=headers)
                 resp.raise_for_status()
-                record.status = "cancelled"
+                # Distinct from "cancelled" (a clean pre-mission cancel):
+                # "aborted" means we recovered from a genuine Movu-side
+                # failure. Keeping these separate avoids the "aborted
+                # shown as Terminé/Annulé" confusion — the colleague
+                # needs to see this came from an error, not a routine
+                # cancel.
+                record.status = "aborted" if record.status == "failed" else "cancelled"
+                record.error_message = None
             except httpx.HTTPError as e:
                 logger.error("Failed to abort inbound order %s: %s", record.movu_order_id, e)
-                record.error_message = f"Cancel failed: {e}"
+                if getattr(e, "response", None) is not None and e.response.status_code == 409:
+                    # Same signature as vehicle 6/15/21 (Aug 31 – Sep 1):
+                    # Movu already considers the order "Finished" even
+                    # though the orderline errored — no API path to fix
+                    # this. Needs Movu-side escalation, not a retry.
+                    record.error_message = (
+                        "Abort refusé (409) — Movu considère cet ordre comme déjà "
+                        "'Finished' malgré l'échec de la ligne. Blocage confirmé "
+                        "côté Movu, escalade nécessaire. Ne pas rescanner ce bac."
+                    )
+                else:
+                    record.error_message = f"Cancel failed: {e}"
 
     db.commit()
     return RedirectResponse(url="/mise-en-stock", status_code=303)
@@ -610,6 +648,52 @@ async def mise_en_stock_delete(
     return RedirectResponse(url="/mise-en-stock", status_code=303)
 
 
+@app.post("/mise-en-stock/replenishment/{replenishment_id}/cancel")
+async def mise_en_stock_replenishment_cancel(
+    replenishment_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Aborts the Movu Out order for a replenishment ("Appeler un bac")
+    request. Mirrors mise_en_stock_cancel above — added because no
+    abort path existed for replenishment orders before (only delete,
+    which refuses anything with a movu_order_id). Real gap: échec
+    case REPL-999100000000016092-c50a5481 (T_3003 "Transport cancelled
+    by Traffic Control") had no way to be aborted via the UI.
+    """
+    record = db.query(ReplenishmentRequest).filter_by(id=replenishment_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Replenishment request not found")
+
+    if record.status in ("cancelled", "aborted", "completed"):
+        return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+    if record.status == "dry_run":
+        record.status = "cancelled"
+    else:
+        url = f"{config.MOVU_OPS_BASE_URL}/api/v3/orders/{record.movu_order_id}/abort"
+        headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+        async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+            try:
+                resp = await client.post(url, headers=headers)
+                resp.raise_for_status()
+                record.status = "aborted" if record.status == "failed" else "cancelled"
+                record.error_message = None
+            except httpx.HTTPError as e:
+                logger.error("Failed to abort replenishment order %s: %s", record.movu_order_id, e)
+                if getattr(e, "response", None) is not None and e.response.status_code == 409:
+                    record.error_message = (
+                        "Abort refusé (409) — Movu considère cet ordre comme déjà "
+                        "'Finished'. Blocage confirmé côté Movu, escalade nécessaire."
+                    )
+                else:
+                    record.error_message = f"Cancel failed: {e}"
+
+    db.commit()
+    return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+
 @app.post("/mise-en-stock/replenishment/{replenishment_id}/delete")
 async def mise_en_stock_replenishment_delete(
     replenishment_id: str,
@@ -629,6 +713,135 @@ async def mise_en_stock_replenishment_delete(
     db.delete(record)
     db.commit()
     return RedirectResponse(url="/mise-en-stock", status_code=303)
+
+
+def _has_recovery_access(current_user: User) -> bool:
+    """Same access gate as inbound (MPS3) — recovery re-enables inbound
+    scanning, so it needs the same permission, nothing looser."""
+    return "MPS3" in (current_user.access_terminals or [])
+
+
+@app.get("/recovery")
+async def recovery_page(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Separate page (deliberately not merged into /mise-en-stock) for the
+    physical-recovery workflow: a robot got stuck holding a pack
+    (battery/traffic-control/hardware fault → OrderLineErrored), a
+    colleague physically removes the pack and recharges/frees the
+    robot, then this page lets them confirm that recovery and abort
+    the dead Movu order — unblocking the handling unit so a fresh
+    mise-en-stock scan on the same barcode won't hit a conflict.
+
+    Kept separate from /mise-en-stock deliberately: this is an
+    exception/incident queue, not routine scanning traffic, and mixing
+    them would bury rare-but-urgent rows in routine volume.
+    """
+    if not _has_recovery_access(current_user):
+        raise HTTPException(status_code=403, detail="Accès recovery non autorisé (MPS3 requis).")
+
+    # "failed" = needs action now. "aborted" (last 24h) = recently
+    # resolved, kept visible briefly so the colleague can confirm their
+    # action actually went through, then it ages out of view.
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=config.STALE_INBOUND_THRESHOLD_MINUTES)
+
+    failed_inbound = (
+        db.query(InboundRequest)
+        .filter(InboundRequest.status == "failed")
+        .order_by(InboundRequest.created_at.desc())
+        .all()
+    )
+    failed_replenishment = (
+        db.query(ReplenishmentRequest)
+        .filter(ReplenishmentRequest.status == "failed")
+        .order_by(ReplenishmentRequest.created_at.desc())
+        .all()
+    )
+    # SILENT-DEADLOCK CASE — no OrderLineErrored, no OrderAborted,
+    # nothing. Confirmed real pattern Aug 31/Sep 1 (vehicles 6, 15, 21):
+    # Movu never sent a failure webhook at all, the only way to find
+    # these is noticing the mission has been sitting at in_progress or
+    # processed far longer than a normal mission should. Same
+    # threshold as the Grafana stale_inbound_requests_total alert, but
+    # surfaced directly here so a colleague on shift doesn't need
+    # Grafana to find it.
+    stale_inbound = (
+        db.query(InboundRequest)
+        .filter(
+            InboundRequest.status.in_(["in_progress", "processed"]),
+            InboundRequest.created_at < stale_threshold,
+        )
+        .order_by(InboundRequest.created_at.asc())
+        .all()
+    )
+    stale_replenishment = (
+        db.query(ReplenishmentRequest)
+        .filter(
+            ReplenishmentRequest.status.in_(["in_progress", "processed", "presented"]),
+            ReplenishmentRequest.created_at < stale_threshold,
+        )
+        .order_by(ReplenishmentRequest.created_at.asc())
+        .all()
+    )
+    recently_aborted_inbound = (
+        db.query(InboundRequest)
+        .filter(InboundRequest.status == "aborted", InboundRequest.created_at >= since)
+        .order_by(InboundRequest.created_at.desc())
+        .all()
+    )
+    recently_aborted_replenishment = (
+        db.query(ReplenishmentRequest)
+        .filter(ReplenishmentRequest.status == "aborted", ReplenishmentRequest.created_at >= since)
+        .order_by(ReplenishmentRequest.created_at.desc())
+        .all()
+    )
+
+    def _row(r, mission_type: str, cancel_url: str):
+        return {
+            "type": mission_type,
+            "id": r.id,
+            "handling_unit_id": r.handling_unit_id,
+            "movu_order_id": r.movu_order_id,
+            "status": r.status,
+            "error_message": r.error_message,
+            "created_at": r.created_at,
+            "cancel_url": cancel_url,
+        }
+
+    needs_action = (
+        [_row(r, "In", f"/mise-en-stock/{r.id}/cancel") for r in failed_inbound]
+        + [_row(r, "Out", f"/mise-en-stock/replenishment/{r.id}/cancel") for r in failed_replenishment]
+    )
+    needs_action.sort(key=lambda x: x["created_at"], reverse=True)
+
+    suspects = (
+        [_row(r, "In", f"/mise-en-stock/{r.id}/cancel") for r in stale_inbound]
+        + [_row(r, "Out", f"/mise-en-stock/replenishment/{r.id}/cancel") for r in stale_replenishment]
+    )
+    suspects.sort(key=lambda x: x["created_at"])
+
+    recently_resolved = (
+        [_row(r, "In", "") for r in recently_aborted_inbound]
+        + [_row(r, "Out", "") for r in recently_aborted_replenishment]
+    )
+    recently_resolved.sort(key=lambda x: x["created_at"], reverse=True)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="recovery.html",
+        context={
+            "user_email": current_user.email,
+            "needs_action": needs_action,
+            "suspects": suspects,
+            "recently_resolved": recently_resolved,
+            "movu_ops_base_url": config.MOVU_OPS_BASE_URL,
+            "stale_threshold_minutes": config.STALE_INBOUND_THRESHOLD_MINUTES,
+        },
+    )
 
 
 @app.get("/api/handling-units/search")
@@ -691,7 +904,7 @@ async def mise_en_stock_call_pack(
         db.query(ReplenishmentRequest)
         .filter(
             ReplenishmentRequest.handling_unit_id == handling_unit_id,
-            ReplenishmentRequest.status.notin_(["failed", "cancelled", "completed"]),
+            ReplenishmentRequest.status.notin_(["failed", "cancelled", "completed", "aborted"]),
         )
         .order_by(ReplenishmentRequest.created_at.desc())
         .first()
@@ -1325,10 +1538,20 @@ INBOUND_NOTIFICATION_STATUS_MAP = {
     "OrderActive": "in_progress",
     "OrderLineActive": "in_progress",
     "OrderLineReleased": "returning",  # tote is on its way back to storage
+    # CONFIRMED SEP 1: OrderProcessed/OrderLineProcessed fire when the
+    # robot picks the pack off the gate and leaves — this is when the
+    # GATE itself is released and can be reused for the next mission,
+    # but the robot is still searching for a storage slot. The order is
+    # NOT done yet and can still Error at this stage. Previously this
+    # was wrongly mapped straight to "completed", which made the
+    # "Annuler" button disappear (can_cancel is False once completed)
+    # at exactly the moment the riskiest phase begins — this is the
+    # root cause of "Annuler only seems to work before the robot
+    # arrives" reported today.
+    "OrderProcessed": "processed",
+    "OrderLineProcessed": "processed",
     "OrderFinished": "completed",
     "OrderLineFinished": "completed",
-    "OrderProcessed": "completed",
-    "OrderLineProcessed": "completed",
     "HandlingUnitStored": "completed",
     "OrderAborted": "cancelled",
     "OrderLineErrored": "failed",
@@ -1404,16 +1627,37 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
             inbound_record = db.query(InboundRequest).filter_by(movu_order_id=movu_order_id).first()
             if inbound_record and notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
                 new_status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
-                inbound_record.status = new_status
-                if new_status in ("failed", "cancelled"):
-                    inbound_record.error_message = f"Movu notification: {notification_type}"
+                if inbound_record.status in ("failed", "aborted", "cancelled"):
+                    # STICKY TERMINAL STATES — confirmed real Movu bug
+                    # (Aug 31 / Sep 1, vehicles 6/15/21 + 016076/016105):
+                    # OrderLineErrored can fire, then a LATER OrderFinished
+                    # notification arrives for the SAME order even though
+                    # the physical pack was never placed (handling unit
+                    # still shows state=Retrieved, location=null,
+                    # vehicleId set). Order-level "Finished" is not a
+                    # trustworthy success signal once we've already seen
+                    # a failure/abort on this order. A genuine recovery
+                    # always gets a brand-new movu_order_id via a fresh
+                    # mise-en-stock scan, so this order_id is considered
+                    # dead once failed/aborted — do not let it un-fail.
+                    logger.warning(
+                        "Ignoring notification %s for inbound order %s (handling_unit=%s) "
+                        "— already in terminal status '%s', not trusting order-level "
+                        "state to move it back to '%s'.",
+                        notification_type, movu_order_id, inbound_record.handling_unit_id,
+                        inbound_record.status, new_status,
+                    )
                 else:
-                    # Clear any stale error from an earlier Errored event
-                    # if a LATER notification moves this forward to a
-                    # genuine success — otherwise a mission that hiccups
-                    # then recovers shows a permanently confusing
-                    # "Terminé" badge next to old error text.
-                    inbound_record.error_message = None
+                    inbound_record.status = new_status
+                    if new_status in ("failed", "cancelled"):
+                        inbound_record.error_message = f"Movu notification: {notification_type}"
+                    else:
+                        # Clear any stale error from an earlier Errored event
+                        # if a LATER notification moves this forward to a
+                        # genuine success — otherwise a mission that hiccups
+                        # then recovers shows a permanently confusing
+                        # "Terminé" badge next to old error text.
+                        inbound_record.error_message = None
                 db.commit()
 
             pack_record = db.query(PreparationRunPack).filter_by(movu_order_id=movu_order_id).first()
@@ -1449,11 +1693,22 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                     db.commit()
                 elif notification_type in INBOUND_NOTIFICATION_STATUS_MAP:
                     new_status = INBOUND_NOTIFICATION_STATUS_MAP[notification_type]
-                    replenishment_record.status = new_status
-                    if new_status in ("failed", "cancelled"):
-                        replenishment_record.error_message = f"Movu notification: {notification_type}"
+                    if replenishment_record.status in ("failed", "aborted", "cancelled"):
+                        # Same sticky-terminal-state fix as InboundRequest
+                        # above — same Movu-side bug applies to Out orders
+                        # too (T_3003 "Transport cancelled by Traffic
+                        # Control" cases seen Aug 31).
+                        logger.warning(
+                            "Ignoring notification %s for replenishment order %s "
+                            "— already in terminal status '%s'.",
+                            notification_type, movu_order_id, replenishment_record.status,
+                        )
                     else:
-                        replenishment_record.error_message = None
+                        replenishment_record.status = new_status
+                        if new_status in ("failed", "cancelled"):
+                            replenishment_record.error_message = f"Movu notification: {notification_type}"
+                        else:
+                            replenishment_record.error_message = None
                     db.commit()
 
         if notification_type in INBOUND_COMPLETE_NOTIFICATION_TYPES:
