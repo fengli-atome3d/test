@@ -115,13 +115,13 @@ stale_inbound_gauge.set_function(_compute_stale_inbound_count)
 # aggregate MOVU emplacement. Confirmed from the functional design doc's
 # webhook list (section 10, annex 16.3).
 #
-# IMPORTANT: OrderLineProcessed does NOT belong here. Confirmed real
-# behavior (Sep 1): "Processed" fires when the robot picks the pack off
-# the gate and leaves — the GATE is freed for reuse at this point, but
-# the robot is still searching for a storage slot and the mission can
-# still error afterward. Only HandlingUnitStored / OrderFinished /
-# OrderLineFinished represent genuine physical storage completion.
-INBOUND_COMPLETE_NOTIFICATION_TYPES = {"HandlingUnitStored", "OrderFinished", "OrderLineFinished"}
+# ORDERLINE-LEVEL / HU-LEVEL ONLY. Confirmed real evidence (Sep 1, order
+# IN-999100000000016076-058a6f08): order-level "Finished" can report
+# success while that order's own orderline is "Errored" — order-level
+# notifications are not a trustworthy completion signal. OrderProcessed/
+# OrderLineProcessed also excluded — that only means the robot left the
+# gate, not that the pack is stored (confirmed Sep 1).
+INBOUND_COMPLETE_NOTIFICATION_TYPES = {"HandlingUnitStored", "OrderLineFinished"}
 
 
 @app.get("/health")
@@ -1533,27 +1533,33 @@ async def receive_preparation_webhook(request: Request, db: Session = Depends(ge
 # notification type is listed — only ones that actually change our
 # tracked state; anything else leaves the row untouched.
 INBOUND_NOTIFICATION_STATUS_MAP = {
-    "OrderStarted": "in_progress",
+    # ORDERLINE-LEVEL ONLY, deliberately. CONFIRMED SEP 1 (real evidence,
+    # order IN-999100000000016076-058a6f08): order-level state can say
+    # "Finished" while that order's own orderline state is "Errored" —
+    # order-level notifications (OrderStarted/OrderProcessed/
+    # OrderFinished/OrderAborted) are NOT trustworthy on their own. Since
+    # every one of our orders has exactly one orderline (one handling
+    # unit), the orderline-level notification is the correct granularity
+    # and is what actually reflects this specific pack's real state.
+    # Order-level notifications are intentionally NOT in this map —
+    # they still update OrderMapping.current_state elsewhere for audit,
+    # but no longer drive InboundRequest/ReplenishmentRequest.status.
+    #
+    # Also fixes a separate dead-code bug: "OrderActive"/"OrderLineActive"
+    # used here previously are NOT real Movu notification type names
+    # (verified against swagger.json's NotificationType enum) — the real
+    # names are "OrderActivated"/"OrderLineActivated". Those two map
+    # entries had silently never matched anything Movu actually sends.
     "OrderLineStarted": "in_progress",
-    "OrderActive": "in_progress",
-    "OrderLineActive": "in_progress",
+    "OrderLineActivated": "in_progress",
     "OrderLineReleased": "returning",  # tote is on its way back to storage
-    # CONFIRMED SEP 1: OrderProcessed/OrderLineProcessed fire when the
-    # robot picks the pack off the gate and leaves — this is when the
-    # GATE itself is released and can be reused for the next mission,
-    # but the robot is still searching for a storage slot. The order is
-    # NOT done yet and can still Error at this stage. Previously this
-    # was wrongly mapped straight to "completed", which made the
-    # "Annuler" button disappear (can_cancel is False once completed)
-    # at exactly the moment the riskiest phase begins — this is the
-    # root cause of "Annuler only seems to work before the robot
-    # arrives" reported today.
-    "OrderProcessed": "processed",
+    # Gate freed, robot still searching for a slot — NOT stored yet,
+    # can still error. See "processed" badge / can_cancel comments.
     "OrderLineProcessed": "processed",
-    "OrderFinished": "completed",
+    # Only genuine, line-level confirmation counts as real completion.
     "OrderLineFinished": "completed",
     "HandlingUnitStored": "completed",
-    "OrderAborted": "cancelled",
+    "OrderLineAborted": "cancelled",
     "OrderLineErrored": "failed",
 }
 
