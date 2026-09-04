@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 movu_ops_schema.sql
 swagger.json__pycache__/
 *.pyc
