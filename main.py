@@ -80,7 +80,7 @@ async def not_authenticated_handler(request: Request, exc: NotAuthenticatedExcep
 # Caddyfile. Only reachable internally (VM101 localhost / docker network),
 # which is where Prometheus itself scrapes it from.
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Gauge
+from prometheus_client import Gauge, Counter
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 # --- Stale inbound mission safety net -----------------------------------
@@ -109,6 +109,46 @@ def _compute_stale_inbound_count():
 
 
 stale_inbound_gauge.set_function(_compute_stale_inbound_count)
+
+# NEW METRICS — previously the only metric in the whole app was the
+# stale gauge above, so any Grafana panel for these errors returned
+# "No data" by design, not because of a Grafana/dashboard config issue.
+# Counters, so Grafana can graph rate(...) over time, not just a point-
+# in-time snapshot.
+orderline_errored_counter = Counter(
+    "movu_orderline_errored_total",
+    "Count of genuine (first-seen) OrderLineErrored notifications processed, by mission type",
+    ["mission_type"],  # "In" or "Out"
+)
+
+abort_conflict_counter = Counter(
+    "movu_abort_conflict_409_total",
+    "Count of abort attempts blocked by Movu with 409 (order already Finished) — the "
+    "vehicle 6/15/21-class deadlock signature, confirmed Aug 31/Sep 1",
+    ["mission_type"],
+)
+
+# Live gauge, mirrors the /recovery page's own queries — lets Grafana
+# show current backlog size directly, not just a rate of new failures.
+currently_failed_gauge = Gauge(
+    "currently_failed_requests_total",
+    "InboundRequests/ReplenishmentRequests currently sitting at status=failed, by mission type",
+    ["mission_type"],
+)
+
+
+def _compute_currently_failed(mission_type: str):
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        model = InboundRequest if mission_type == "In" else ReplenishmentRequest
+        return db.query(model).filter(model.status == "failed").count()
+    finally:
+        db.close()
+
+
+currently_failed_gauge.labels(mission_type="In").set_function(lambda: _compute_currently_failed("In"))
+currently_failed_gauge.labels(mission_type="Out").set_function(lambda: _compute_currently_failed("Out"))
 
 # Movu notification types that mean "an inbound handling unit finished
 # being stored" — this is when stock needs syncing to ShippingBo's
@@ -608,6 +648,7 @@ async def mise_en_stock_cancel(
                     # Movu already considers the order "Finished" even
                     # though the orderline errored — no API path to fix
                     # this. Needs Movu-side escalation, not a retry.
+                    abort_conflict_counter.labels(mission_type="In").inc()
                     record.error_message = (
                         "Abort refusé (409) — Movu considère cet ordre comme déjà "
                         "'Finished' malgré l'échec de la ligne. Blocage confirmé "
@@ -683,6 +724,7 @@ async def mise_en_stock_replenishment_cancel(
             except httpx.HTTPError as e:
                 logger.error("Failed to abort replenishment order %s: %s", record.movu_order_id, e)
                 if getattr(e, "response", None) is not None and e.response.status_code == 409:
+                    abort_conflict_counter.labels(mission_type="Out").inc()
                     record.error_message = (
                         "Abort refusé (409) — Movu considère cet ordre comme déjà "
                         "'Finished'. Blocage confirmé côté Movu, escalade nécessaire."
@@ -1657,6 +1699,13 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                     inbound_record.status = new_status
                     if new_status in ("failed", "cancelled"):
                         inbound_record.error_message = f"Movu notification: {notification_type}"
+                        if new_status == "failed":
+                            orderline_errored_counter.labels(mission_type="In").inc()
+                            logger.error(
+                                "INBOUND ORDERLINE ERRORED: movu_order_id=%s handling_unit_id=%s "
+                                "notification=%s",
+                                movu_order_id, inbound_record.handling_unit_id, notification_type,
+                            )
                     else:
                         # Clear any stale error from an earlier Errored event
                         # if a LATER notification moves this forward to a
@@ -1713,6 +1762,13 @@ async def receive_movu_webhook(request: Request, db: Session = Depends(get_db)):
                         replenishment_record.status = new_status
                         if new_status in ("failed", "cancelled"):
                             replenishment_record.error_message = f"Movu notification: {notification_type}"
+                            if new_status == "failed":
+                                orderline_errored_counter.labels(mission_type="Out").inc()
+                                logger.error(
+                                    "OUTBOUND ORDERLINE ERRORED: movu_order_id=%s handling_unit_id=%s "
+                                    "notification=%s",
+                                    movu_order_id, replenishment_record.handling_unit_id, notification_type,
+                                )
                         else:
                             replenishment_record.error_message = None
                     db.commit()
