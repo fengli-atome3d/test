@@ -34,6 +34,16 @@
         .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; }
         .nav-link:hover { color: #18181b; }
         .nav-active { color: #18181b; font-weight: 600; }
+
+        /* --- Shared top nav (identical on every page) --- */
+        .app-header { display: flex; justify-content: space-between; align-items: center;
+                       margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem; }
+        .app-nav .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; font-size: 0.9rem; }
+        .app-nav .nav-link:hover { color: #18181b; }
+        .app-nav .nav-active { color: #18181b; font-weight: 600; }
+        .app-user { font-size: 0.85rem; color: #71717a; }
+        .app-user a { color: #71717a; margin-left: 0.75rem; text-decoration: none; }
+        .app-user a:hover { text-decoration: underline; }
         .pagination { display: flex; gap: 1rem; align-items: center; justify-content: center;
                 margin-top: 1.5rem; font-size: 0.85rem; color: #52525b; }
         .pagination a { color: #18181b; text-decoration: none; font-weight: 500; }
@@ -41,15 +51,9 @@
     </style>
 </head>
 <body>
+    {% include "_nav.html" %}
     <header>
         <h1>Preparation Runs</h1>
-        <div class="user-info">
-            <a href="/preparation" class="nav-link nav-active">Préparation</a>
-            <a href="/mise-en-stock" class="nav-link">Mise en stock</a>
-            <span style="margin: 0 0.75rem; color: #d4d4d8;">|</span>
-            {{ user_email }}
-            <a href="/logout">Déconnexion</a>
-        </div>
     </header>
 
     <form method="get" action="/preparation" class="filters">

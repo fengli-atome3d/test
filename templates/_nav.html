@@ -1,0 +1,11 @@
+<div class="app-header">
+    <div class="app-nav">
+        <a href="/preparation" class="nav-link{% if request.url.path.startswith('/preparation') %} nav-active{% endif %}">Préparation</a>
+        <a href="/mise-en-stock" class="nav-link{% if request.url.path == '/mise-en-stock' %} nav-active{% endif %}">Mise en stock</a>
+        <a href="/recovery" class="nav-link{% if request.url.path == '/recovery' %} nav-active{% endif %}">Récupération</a>
+    </div>
+    <div class="app-user">
+        {{ user_email }}
+        <a href="/logout">Déconnexion</a>
+    </div>
+</div>

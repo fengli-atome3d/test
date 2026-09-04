@@ -8,6 +8,16 @@
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
         h1 { font-size: 1.25rem; margin: 0; color: #18181b; }
         .user-info { font-size: 0.85rem; color: #71717a; }
+
+        /* --- Shared top nav (identical on every page) --- */
+        .app-header { display: flex; justify-content: space-between; align-items: center;
+                       margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem; }
+        .app-nav .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; font-size: 0.9rem; }
+        .app-nav .nav-link:hover { color: #18181b; }
+        .app-nav .nav-active { color: #18181b; font-weight: 600; }
+        .app-user { font-size: 0.85rem; color: #71717a; }
+        .app-user a { color: #71717a; margin-left: 0.75rem; text-decoration: none; }
+        .app-user a:hover { text-decoration: underline; }
         .warning-banner { background: #fef3c7; color: #92400e; padding: 0.75rem 1rem; border-radius: 8px;
                            font-size: 0.85rem; margin-bottom: 1.5rem; }
         .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
@@ -44,13 +54,9 @@
     </style>
 </head>
 <body>
+    {% include "_nav.html" %}
     <header>
         <h1>Administration — Utilisateurs</h1>
-        <div class="user-info">
-            <a href="/preparation" style="color:#71717a; margin-right:0.75rem;">Préparation</a>
-            <a href="/mise-en-stock" style="color:#71717a; margin-right:0.75rem;">Mise en stock</a>
-            {{ user_email }} <a href="/logout">Déconnexion</a>
-        </div>
     </header>
 
     <div class="warning-banner">

@@ -8,6 +8,16 @@
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
         h1 { font-size: 1.25rem; margin: 0; color: #18181b; }
         .user-info { font-size: 0.85rem; color: #71717a; }
+
+        /* --- Shared top nav (identical on every page) --- */
+        .app-header { display: flex; justify-content: space-between; align-items: center;
+                       margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem; }
+        .app-nav .nav-link { color: #71717a; text-decoration: none; margin-right: 0.75rem; font-size: 0.9rem; }
+        .app-nav .nav-link:hover { color: #18181b; }
+        .app-nav .nav-active { color: #18181b; font-weight: 600; }
+        .app-user { font-size: 0.85rem; color: #71717a; }
+        .app-user a { color: #71717a; margin-left: 0.75rem; text-decoration: none; }
+        .app-user a:hover { text-decoration: underline; }
         .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
                 max-width: 480px; }
         .card p { color: #52525b; font-size: 0.9rem; }
@@ -20,9 +30,9 @@
     </style>
 </head>
 <body>
+    {% include "_nav.html" %}
     <header>
         <h1>Upload CSV — Run {{ run.id }}</h1>
-        <div class="user-info">{{ user_email }} <a href="/logout">Déconnexion</a></div>
     </header>
     <div class="card">
         <p>Format attendu : colonnes <code>Sku, Désignation, EAN-13, Emplacement, Qté</code> (export ShippingBo standard).</p>
