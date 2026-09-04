@@ -61,6 +61,16 @@
         {{ groups | selectattr('is_movu_stocked') | list | length }} suivis dans Movu
     </p>
 
+    {% set pending_count = groups | selectattr('is_movu_stocked') | selectattr('status', 'equalto', 'pending') | list | length %}
+    {% if pending_count > 0 %}
+    <form method="post" action="/preparation/{{ run.id }}/trigger-all" style="margin-bottom: 1rem;"
+          onclick="return confirm('Déclencher {{ pending_count }} mission(s) Movu pour ce run ? Chaque emplacement en attente recevra son propre ordre Cycle.');">
+        <button type="submit" class="trigger-btn" style="padding: 0.6rem 1.2rem; font-size: 0.9rem;">
+            Déclencher tout ({{ pending_count }} emplacement{{ 's' if pending_count > 1 else '' }} en attente)
+        </button>
+    </form>
+    {% endif %}
+
     {% if groups %}
     <table>
         <thead>

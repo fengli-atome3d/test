@@ -1235,6 +1235,80 @@ def preparation_detail(
     )
 
 
+async def _trigger_cycle_order_for_group(
+    client: httpx.AsyncClient, headers: dict, representative_pack: "PreparationRunPack", terminal: str,
+) -> tuple[str, str]:
+    """
+    Creates one Movu Cycle order (released:false → staging) for one
+    emplacement, then immediately releases it. Shared by both the
+    single-emplacement "Déclencher" button and the "Déclencher tout"
+    batch trigger, so both paths build the exact same payload and
+    handle failures identically.
+
+    Returns (movu_order_id, new_status).
+    """
+    movu_order_id = f"OUT-{representative_pack.id[:8]}"
+    movu_payload = {
+        "id": movu_order_id,
+        "type": "Cycle",
+        "due": (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat(),
+        "priority": None,
+        "released": False,  # MANDATORY false per Atome 3D.docx 9.1
+        "terminal": terminal,
+        # "gate" intentionally OMITTED — Movu decides, per docs.
+        "orderLines": [{"handlingUnitId": representative_pack.movu_handling_unit_id}],
+    }
+
+    if config.DRY_RUN_PREPARATION:
+        logger.info(
+            "[DRY_RUN_PREPARATION] Would POST outbound order (released=false) then immediately "
+            "POST /api/v3/orders/%s/release to Movu OPS: %s",
+            movu_order_id, movu_payload,
+        )
+        return movu_order_id, "dry_run"
+
+    try:
+        resp = await client.post(f"{config.MOVU_OPS_BASE_URL}/api/v3/orders", json=movu_payload, headers=headers)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        logger.error("Failed to create outbound order for pack %s: %s", representative_pack.id, e)
+        return movu_order_id, "failed"
+
+    try:
+        release_resp = await client.post(
+            f"{config.MOVU_OPS_BASE_URL}/api/v3/orders/{movu_order_id}/release", headers=headers
+        )
+        release_resp.raise_for_status()
+        return movu_order_id, "sent"
+    except httpx.HTTPError as e:
+        logger.error(
+            "Order %s created successfully but /release FAILED for pack %s: %s. "
+            "Order is stuck in staging — check Movu Ops UI directly.",
+            movu_order_id, representative_pack.id, e,
+        )
+        return movu_order_id, "failed"
+
+
+def _get_single_terminal_for_user(current_user: User) -> str:
+    """Shared terminal-validation logic — exactly one terminal required,
+    same rule for both single and batch triggering."""
+    valid_terminals = [t for t in (current_user.access_terminals or []) if t in {"MPS1", "MPS2", "MPS3"}]
+    if len(valid_terminals) != 1:
+        logger.warning(
+            "Rejected outbound trigger: user %s has %d valid terminal(s) in access_terminals (%s) — need exactly 1",
+            current_user.email, len(valid_terminals), current_user.access_terminals,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Votre compte doit avoir accès à EXACTEMENT un terminal pour déclencher une mission "
+                "(actuellement : " + (", ".join(current_user.access_terminals or []) or "aucun") + "). "
+                "Utilisez un compte dédié à un seul terminal, ou contactez un administrateur."
+            ),
+        )
+    return valid_terminals[0]
+
+
 @app.post("/preparation/packs/{pack_id}/trigger")
 async def preparation_trigger_pack(
     pack_id: str,
@@ -1272,21 +1346,7 @@ async def preparation_trigger_pack(
     an immediate follow-up call to /release is required — combined into
     this single button click.
     """
-    valid_terminals = [t for t in (current_user.access_terminals or []) if t in {"MPS1", "MPS2", "MPS3"}]
-    if len(valid_terminals) != 1:
-        logger.warning(
-            "Rejected outbound trigger: user %s has %d valid terminal(s) in access_terminals (%s) — need exactly 1",
-            current_user.email, len(valid_terminals), current_user.access_terminals,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Votre compte doit avoir accès à EXACTEMENT un terminal pour déclencher une mission "
-                "(actuellement : " + (", ".join(current_user.access_terminals or []) or "aucun") + "). "
-                "Utilisez un compte dédié à un seul terminal, ou contactez un administrateur."
-            ),
-        )
-    terminal = valid_terminals[0]
+    terminal = _get_single_terminal_for_user(current_user)
 
     pack = db.query(PreparationRunPack).filter_by(id=pack_id).first()
     if not pack:
@@ -1300,55 +1360,9 @@ async def preparation_trigger_pack(
         preparation_run_id=pack.preparation_run_id, emplacement=pack.emplacement,
     ).all()
 
-    movu_order_id = f"OUT-{pack.id[:8]}"
-    movu_payload = {
-        "id": movu_order_id,
-        "type": "Cycle",
-        "due": (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat(),
-        "priority": None,
-        "released": False,  # MANDATORY false per Atome 3D.docx 9.1 — see docstring
-        "terminal": terminal,
-        # NOTE: "gate" key intentionally OMITTED — Movu decides, per
-        # confirmed doc recommendation. "slot" also omitted (only
-        # relevant for multi-orderline sequencing, not used here).
-        "orderLines": [{"handlingUnitId": pack.movu_handling_unit_id}],
-    }
-
-    if config.DRY_RUN_PREPARATION:
-        logger.info(
-            "[DRY_RUN_PREPARATION] Would POST outbound order (released=false) then immediately "
-            "POST /api/v3/orders/%s/release to Movu OPS: %s",
-            movu_order_id, movu_payload,
-        )
-        new_status = "dry_run"
-    else:
-        headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
-        async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
-            try:
-                resp = await client.post(f"{config.MOVU_OPS_BASE_URL}/api/v3/orders", json=movu_payload, headers=headers)
-                resp.raise_for_status()
-            except httpx.HTTPError as e:
-                logger.error("Failed to create outbound order for pack %s: %s", pack_id, e)
-                new_status = "failed"
-            else:
-                # Order created successfully but sitting in staging
-                # (released:false) — must explicitly release it now.
-                try:
-                    release_resp = await client.post(
-                        f"{config.MOVU_OPS_BASE_URL}/api/v3/orders/{movu_order_id}/release", headers=headers
-                    )
-                    release_resp.raise_for_status()
-                    new_status = "sent"
-                except httpx.HTTPError as e:
-                    # Order EXISTS in Movu (staged) but release failed —
-                    # this needs manual attention in Movu's own UI, not
-                    # a silent retry, since we don't want to double-release.
-                    logger.error(
-                        "Order %s created successfully but /release FAILED for pack %s: %s. "
-                        "Order is stuck in staging — check Movu Ops UI directly.",
-                        movu_order_id, pack_id, e,
-                    )
-                    new_status = "failed"
+    headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+    async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+        movu_order_id, new_status = await _trigger_cycle_order_for_group(client, headers, pack, terminal)
 
     for sibling in sibling_packs:
         sibling.status = new_status
@@ -1356,6 +1370,76 @@ async def preparation_trigger_pack(
 
     db.commit()
     return RedirectResponse(url=f"/preparation/{pack.preparation_run_id}", status_code=303)
+
+
+@app.post("/preparation/{run_id}/trigger-all")
+async def preparation_trigger_all(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    One-button "Déclencher tout" — loops over every emplacement in this
+    run that is Movu-stocked and still 'pending', creating one Cycle
+    order per emplacement via the exact same logic as the single-pack
+    trigger above (same payload shape, same released:false -> release
+    pattern). Simplification requested directly by the person's
+    manager: one click for the whole run instead of clicking
+    "Déclencher" once per emplacement row.
+
+    Terminal is validated ONCE up front (same single-terminal-per-user
+    rule) rather than per group, so the whole batch goes to the same
+    terminal consistently and a misconfigured account fails fast
+    before creating any orders at all.
+
+    Already-triggered emplacements (status != 'pending', e.g. 'sent',
+    'completed', 'failed', 'presented') are deliberately skipped — this
+    button is safe to click again later without re-triggering
+    everything, e.g. to pick up newly-added or previously-non-Movu
+    rows without re-sending already-in-flight missions.
+    """
+    terminal = _get_single_terminal_for_user(current_user)
+
+    run = db.query(PreparationRun).filter_by(id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Preparation run not found")
+
+    packs = db.query(PreparationRunPack).filter_by(preparation_run_id=run_id).all()
+
+    # Same grouping as preparation_detail — one order per emplacement,
+    # not one per SKU line.
+    groups: dict[str, list[PreparationRunPack]] = {}
+    for p in packs:
+        groups.setdefault(p.emplacement, []).append(p)
+
+    eligible = [
+        rows for rows in groups.values()
+        if rows[0].is_movu_stocked and rows[0].status == "pending"
+    ]
+
+    triggered = 0
+    failed = 0
+    headers = {"x-api-key": config.MOVU_OPS_API_KEY} if config.MOVU_OPS_API_KEY else {}
+    async with httpx.AsyncClient(timeout=10, verify=config.MOVU_OPS_VERIFY_SSL) as client:
+        for sibling_packs in eligible:
+            representative_pack = sibling_packs[0]
+            movu_order_id, new_status = await _trigger_cycle_order_for_group(
+                client, headers, representative_pack, terminal,
+            )
+            for sibling in sibling_packs:
+                sibling.status = new_status
+                sibling.movu_order_id = movu_order_id
+            if new_status == "failed":
+                failed += 1
+            else:
+                triggered += 1
+            db.commit()  # commit per group, so a later failure doesn't roll back earlier successes
+
+    logger.info(
+        "Trigger-all for run %s: %d emplacement(s) triggered, %d failed, terminal=%s, user=%s",
+        run_id, triggered, failed, terminal, current_user.email,
+    )
+    return RedirectResponse(url=f"/preparation/{run_id}", status_code=303)
 
 
 @app.post("/preparation/packs/{pack_id}/confirm-picking")
